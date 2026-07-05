@@ -1,0 +1,15 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "local",
+      "inherits": "default",
+      "cacheVariables": {
+        "SGDK_DIR": {
+          "type": "PATH",
+          "value": "C:/SGDK"
+        }
+      }
+    }
+  ]
+}

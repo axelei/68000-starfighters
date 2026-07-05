@@ -53,3 +53,13 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Project-specific: SGDK build output and generated files
+out/
+res/resources.h
+res/resources.rs
+src/boot/
+CMakeUserPresets.json
+*.sym
+.idea/
+cmake-build-*/

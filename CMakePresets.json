@@ -1,0 +1,18 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "SGDK (local)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/cmake-build-indexing",
+      "cacheVariables": {
+        "SGDK_DIR": {
+          "type": "PATH",
+          "value": "$env{SGDK}"
+        }
+      }
+    }
+  ]
+}
