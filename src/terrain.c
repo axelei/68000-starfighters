@@ -7,39 +7,46 @@
 #define TERRAIN_BASE_TILE   TILE_USER_INDEX
 #define STARFIELD_BASE_TILE (TILE_USER_INDEX + 16)
 
-// Scroll speeds, fixed-point pixels/frame. Terrain scrolls at "true" game
-// speed; starfield scrolls slower for a parallax effect.
-#define TERRAIN_SPEED   FIX16(1.0)
+// Scroll speeds, fixed-point pixels/frame. Terrain scrolls just a bit
+// faster than the starfield, for a subtle parallax effect.
 #define STARFIELD_SPEED FIX16(0.4)
+#define TERRAIN_SPEED   FIX16(0.55)
 
 static fix16 terrainScroll;
 static fix16 starfieldScroll;
 
-#define CLUMP_SPACING 8 // tile grid spacing between candidate clump anchors
-#define CLUMP_SIZE    2 // clumps are CLUMP_SIZE x CLUMP_SIZE tiles
+#define CLUMP_SPACING  8 // tile grid spacing between candidate clump anchors
+#define CLUMP_MAX_SIZE 3 // clumps are randomly 1x1 up to CLUMP_MAX_SIZE^2 tiles
 
 // Leaves most of the plane untouched (defaults to blank tile 0, which is
-// transparent and lets the BG_B starfield show through), scattering small
-// 2x2 terrain clumps at sparse, deterministically-hashed grid anchors
-// instead of covering the whole playfield in solid ground.
+// transparent and lets the BG_B starfield show through), scattering random-
+// sized, randomly-shaped terrain clumps at sparse grid anchors instead of
+// covering the whole playfield in solid ground or using uniform blocks.
 static void fillTerrainPlane(void)
 {
     for (u16 cy = 0; cy < PLANE_H_TILES; cy += CLUMP_SPACING)
     {
         for (u16 cx = 0; cx < PLANE_W_TILES; cx += CLUMP_SPACING)
         {
-            u16 hash = (cx * 13 + cy * 7) & 15;
-            if (hash > 8) // skip most anchors so clumps stay sparse
+            if ((random() & 15) > 8) // skip most anchors so clumps stay sparse
                 continue;
 
-            u16 ox = cx + (hash & (CLUMP_SPACING - CLUMP_SIZE - 1));
-            u16 oy = cy + ((hash >> 2) & (CLUMP_SPACING - CLUMP_SIZE - 1));
+            u16 w = 1 + (random() % CLUMP_MAX_SIZE);
+            u16 h = 1 + (random() % CLUMP_MAX_SIZE);
+            u16 ox = cx + (random() % (CLUMP_SPACING - w));
+            u16 oy = cy + (random() % (CLUMP_SPACING - h));
 
-            for (u16 dy = 0; dy < CLUMP_SIZE; dy++)
+            for (u16 dy = 0; dy < h; dy++)
             {
-                for (u16 dx = 0; dx < CLUMP_SIZE; dx++)
+                for (u16 dx = 0; dx < w; dx++)
                 {
-                    u16 variant = (dx + dy + hash) & 3;
+                    // Randomly skip corner cells so clumps read as
+                    // irregular blobs rather than solid rectangles.
+                    bool corner = (dx == 0 || dx == w - 1) && (dy == 0 || dy == h - 1);
+                    if (corner && (random() & 3) == 0)
+                        continue;
+
+                    u16 variant = random() & 3;
                     u16 tile = TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, TERRAIN_BASE_TILE + variant);
                     VDP_setTileMapXY(BG_A, tile, ox + dx, oy + dy);
                 }

@@ -9,7 +9,7 @@ explicit palette. Index 0 is always transparent black (SGDK convention for
 sprite transparency).
 """
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 TRANSPARENT = (0, 0, 0)
 
@@ -187,6 +187,34 @@ def explosion():
     return combined
 
 
+def title_image():
+    # Title-screen logo (an IMAGE resource, not a sprite -- see title.c).
+    # Drawn with PIL's built-in bitmap font at native (tiny) size, then
+    # scaled up with NEAREST so it reads as chunky pixel-art text instead of
+    # being blurry. 80x24 native * 4 = 320x96 (40x12 tiles), exactly the
+    # screen's width.
+    scale = 4
+    small = Image.new("RGB", (80, 24), (0, 0, 0))
+    d = ImageDraw.Draw(small)
+    d.text((2, 0), "68000", fill=(255, 255, 255))
+    d.text((2, 12), "STARFIGHTERS", fill=(255, 255, 255))
+    big = small.resize((80 * scale, 24 * scale), Image.NEAREST)
+
+    w, h = big.size
+    # Index 15 is reserved white for the HUD font's ink, same trick as
+    # player_ship() -- VDP_drawImage() loads this palette onto PAL0, which
+    # is also the default text palette, and "PRESS START" is drawn with it.
+    pal = [TRANSPARENT] * 16
+    pal[1] = (90, 160, 255)
+    pal[15] = (255, 255, 255)
+    img = new_indexed((w, h), pal)
+    for y in range(h):
+        for x in range(w):
+            r = big.getpixel((x, y))[0]
+            set_px(img, x, y, 1 if r > 128 else 0)
+    return img
+
+
 def bullet_player():
     pal = [TRANSPARENT, (255, 255, 190)]
     img = new_indexed((8, 8), pal)
@@ -295,6 +323,7 @@ GENERATORS = {
     "enemy_special.png": enemy_special,
     "enemy_big.png": enemy_big,
     "explosion.png": explosion,
+    "title.png": title_image,
     "bullet_player.png": bullet_player,
     "bullet_enemy.png": bullet_enemy,
     "powerup_spread.png": powerup_spread,

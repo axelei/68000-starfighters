@@ -25,6 +25,10 @@ SPRITE spr_bullet_enemy   "gfx/bullet_enemy.png"   1 1 BEST
 SPRITE spr_powerup_spread "gfx/powerup_spread.png" 2 2 BEST
 SPRITE spr_powerup_speed  "gfx/powerup_speed.png"  2 2 BEST
 
+// -- title screen (see title.c). Bundles its own palette (loaded onto PAL0
+// when drawn) -- not one of the 4 shared gameplay hardware palettes.
+IMAGE title_image "gfx/title.png"
+
 // -- tilesets for scrolling backgrounds (BG_A = terrain, BG_B = starfield)
 // opt=NONE keeps every tile distinct/in-order, since terrain.c indexes
 // tiles by their position in the source sheet.

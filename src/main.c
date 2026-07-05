@@ -11,6 +11,7 @@
 #include "collision.h"
 #include "score.h"
 #include "sfx.h"
+#include "title.h"
 
 int main(bool hardReset)
 {
@@ -25,13 +26,12 @@ int main(bool hardReset)
     VDP_setTextPlane(WINDOW);
     VDP_setWindowVPos(FALSE, 28); // full screen height; only the H split varies (see score.c)
 
-    PAL_setPalette(PAL_SHIP,  palette_ship.data,  DMA);
-    PAL_setPalette(PAL_ENEMY, palette_enemy.data, DMA);
-    PAL_setPalette(PAL_PWR,   palette_pwr.data,   DMA);
-    PAL_setPalette(PAL_TERRA, palette_terra.data, DMA);
+    title_run();
 
     terrain_init();
     sfx_init();
+
+    bool firstRun = TRUE;
 
     do
     {
@@ -42,6 +42,15 @@ int main(bool hardReset)
         score_init();
         player_init();
         formation_init();
+
+        // Only the very first game scene fades in from the title screen's
+        // fade-out; subsequent restarts (after a game over) pop in instantly,
+        // same as before.
+        if (firstRun)
+        {
+            title_fadeInGame();
+            firstRun = FALSE;
+        }
 
         while (!player_isGameOver())
         {

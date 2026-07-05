@@ -19,8 +19,8 @@ Enemy enemies[MAX_ENEMIES];
 // BEE/SPECIAL: occasionally peel out of formation, dive down and off the
 // bottom of the screen, then re-enter from the top back into its slot --
 // same path shape as the initial formation entrance.
-#define DIVE_SPEED_Y          FIX16(2.5)
-#define DIVE_SPEED_X_MAX      FIX16(1.0) // max horizontal drift while diving
+#define DIVE_SPEED_Y          FIX16(1.2)
+#define DIVE_SPEED_X_MAX      FIX16(0.6) // max horizontal drift while diving
 #define DIVE_REENTRY_OFFSET   30         // +/- offset from slot X to re-enter from
 #define DIVE_COOLDOWN_MIN     180 // 3s at 60fps
 #define DIVE_COOLDOWN_RANGE   240 // up to +4s more
