@@ -15,15 +15,35 @@
 static fix16 terrainScroll;
 static fix16 starfieldScroll;
 
+#define CLUMP_SPACING 8 // tile grid spacing between candidate clump anchors
+#define CLUMP_SIZE    2 // clumps are CLUMP_SIZE x CLUMP_SIZE tiles
+
+// Leaves most of the plane untouched (defaults to blank tile 0, which is
+// transparent and lets the BG_B starfield show through), scattering small
+// 2x2 terrain clumps at sparse, deterministically-hashed grid anchors
+// instead of covering the whole playfield in solid ground.
 static void fillTerrainPlane(void)
 {
-    for (u16 y = 0; y < PLANE_H_TILES; y++)
+    for (u16 cy = 0; cy < PLANE_H_TILES; cy += CLUMP_SPACING)
     {
-        for (u16 x = 0; x < PLANE_W_TILES; x++)
+        for (u16 cx = 0; cx < PLANE_W_TILES; cx += CLUMP_SPACING)
         {
-            u16 variant = (x + y) & 3;
-            u16 tile = TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, TERRAIN_BASE_TILE + variant);
-            VDP_setTileMapXY(BG_A, tile, x, y);
+            u16 hash = (cx * 13 + cy * 7) & 15;
+            if (hash > 8) // skip most anchors so clumps stay sparse
+                continue;
+
+            u16 ox = cx + (hash & (CLUMP_SPACING - CLUMP_SIZE - 1));
+            u16 oy = cy + ((hash >> 2) & (CLUMP_SPACING - CLUMP_SIZE - 1));
+
+            for (u16 dy = 0; dy < CLUMP_SIZE; dy++)
+            {
+                for (u16 dx = 0; dx < CLUMP_SIZE; dx++)
+                {
+                    u16 variant = (dx + dy + hash) & 3;
+                    u16 tile = TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, TERRAIN_BASE_TILE + variant);
+                    VDP_setTileMapXY(BG_A, tile, ox + dx, oy + dy);
+                }
+            }
         }
     }
 }
@@ -64,6 +84,9 @@ void terrain_update(void)
     terrainScroll += TERRAIN_SPEED;
     starfieldScroll += STARFIELD_SPEED;
 
-    VDP_setVerticalScroll(BG_A, F16_toInt(terrainScroll));
-    VDP_setVerticalScroll(BG_B, F16_toInt(starfieldScroll));
+    // Negated: increasing the raw scroll value moves content up the screen,
+    // but a forward-flying vertical shooter should show the world sliding
+    // down towards the player, so we scroll in the opposite direction.
+    VDP_setVerticalScroll(BG_A, -F16_toInt(terrainScroll));
+    VDP_setVerticalScroll(BG_B, -F16_toInt(starfieldScroll));
 }

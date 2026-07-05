@@ -37,8 +37,11 @@ def fill_rect(img, x0, y0, x1, y1, idx):
 
 
 def player_ship():
-    # palette 0: player/bullets/UI
-    pal = [TRANSPARENT, (80, 220, 255), (220, 245, 255), (40, 120, 180)]
+    # palette 0: player/bullets/UI. Index 1 is also the color used for HUD
+    # text (VDP_drawText's default font uses PAL0 / index 1 for its ink),
+    # so it's kept a near-white for readability rather than the hull's
+    # "natural" color.
+    pal = [TRANSPARENT, (235, 235, 245), (140, 220, 255), (40, 120, 180)]
     img = new_indexed((16, 16), pal)
     # upward-pointing triangle, cockpit highlight
     for row in range(16):

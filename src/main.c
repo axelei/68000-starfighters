@@ -17,6 +17,13 @@ int main(bool hardReset)
     SPR_init();
     JOY_init();
 
+    // HUD/menu text goes on the WINDOW plane, not the default (BG_A) text
+    // plane -- BG_A is continuously scrolled by terrain_update(), which
+    // would otherwise drag the score display up the screen along with the
+    // terrain and visually mix it with terrain tiles behind it.
+    VDP_setTextPlane(WINDOW);
+    VDP_setWindowVPos(FALSE, 28); // full screen height; only the H split varies (see score.c)
+
     PAL_setPalette(PAL_SHIP,  palette_ship.data,  DMA);
     PAL_setPalette(PAL_ENEMY, palette_enemy.data, DMA);
     PAL_setPalette(PAL_PWR,   palette_pwr.data,   DMA);
