@@ -1,5 +1,6 @@
 #include "player.h"
 #include "bullet.h"
+#include "explosion.h"
 #include "sfx.h"
 #include "resources.h"
 
@@ -15,16 +16,31 @@ PlayerState player;
 #define SPREAD_ANGLE_VX  FIX16(1.0)
 #define POWERUP_DURATION (60 * 10) // 10 seconds at 60fps
 
-void player_init(void)
+#define STARTING_LIVES     4
+#define DEATH_PAUSE_FRAMES 60  // 1s at 60fps before the next ship appears
+#define INVULN_DURATION    180 // 3s of post-respawn invulnerability
+#define BLINK_INTERVAL     4   // frames per visibility toggle while invulnerable
+
+static void respawn(void)
 {
     player.x = FIX16((PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2);
     player.y = FIX16(PLAY_AREA_Y_MAX);
     player.fireCooldown = 0;
     player.activePowerup = POWERUP_NONE;
     player.powerupTimer = 0;
+    player.invulnTimer = INVULN_DURATION;
+    player.state = PLAYER_ALIVE;
     player.alive = TRUE;
-    player.sprite = SPR_addSprite(&spr_player, F16_toInt(player.x), F16_toInt(player.y),
-                                   TILE_ATTR(PAL_SHIP, TRUE, FALSE, FALSE));
+
+    SPR_setPosition(player.sprite, F16_toInt(player.x), F16_toInt(player.y));
+    SPR_setVisibility(player.sprite, VISIBLE);
+}
+
+void player_init(void)
+{
+    player.lives = STARTING_LIVES;
+    player.sprite = SPR_addSprite(&spr_player, 0, 0, TILE_ATTR(PAL_SHIP, TRUE, FALSE, FALSE));
+    respawn();
 }
 
 static void clampToPlayArea(void)
@@ -81,10 +97,31 @@ void player_applyPowerup(PowerupType type)
     sfx_play_powerup();
 }
 
+static void updateInvulnerability(void)
+{
+    if (player.invulnTimer == 0)
+        return;
+
+    player.invulnTimer--;
+    bool visible = ((player.invulnTimer / BLINK_INTERVAL) & 1) == 0;
+    SPR_setVisibility(player.sprite, visible ? VISIBLE : HIDDEN);
+
+    if (player.invulnTimer == 0)
+        SPR_setVisibility(player.sprite, VISIBLE);
+}
+
 void player_update(u16 joyState)
 {
-    if (!player.alive)
+    if (player.state == PLAYER_GAME_OVER)
         return;
+
+    if (player.state == PLAYER_RESPAWN_WAIT)
+    {
+        player.respawnTimer--;
+        if (player.respawnTimer == 0)
+            respawn();
+        return;
+    }
 
     fix16 speed = BASE_SPEED;
     if (player.activePowerup == POWERUP_SPEED)
@@ -98,6 +135,7 @@ void player_update(u16 joyState)
     clampToPlayArea();
     handleFire(joyState);
     handlePowerupTimer();
+    updateInvulnerability();
 
     SPR_setPosition(player.sprite, F16_toInt(player.x), F16_toInt(player.y));
 }
@@ -110,6 +148,30 @@ AABB player_getBounds(void)
 
 void player_kill(void)
 {
+    if (player.state != PLAYER_ALIVE || player.invulnTimer > 0)
+        return;
+
+    explosion_spawnAt(F16_toInt(player.x) + PLAYER_SPR_W / 2, F16_toInt(player.y) + PLAYER_SPR_H / 2);
+    sfx_play_explosion();
+
     player.alive = FALSE;
     SPR_setVisibility(player.sprite, HIDDEN);
+
+    if (player.lives > 0)
+        player.lives--;
+
+    if (player.lives == 0)
+    {
+        player.state = PLAYER_GAME_OVER;
+    }
+    else
+    {
+        player.state = PLAYER_RESPAWN_WAIT;
+        player.respawnTimer = DEATH_PAUSE_FRAMES;
+    }
+}
+
+bool player_isGameOver(void)
+{
+    return player.state == PLAYER_GAME_OVER;
 }

@@ -15,6 +15,11 @@ PALETTE palette_terra "gfx/terrain_tiles.png"
 SPRITE spr_player         "gfx/player_ship.png"    2 2 BEST
 SPRITE spr_enemy_bee      "gfx/enemy_bee.png"      2 2 BEST
 SPRITE spr_enemy_special  "gfx/enemy_special.png"  2 2 BEST
+SPRITE spr_enemy_big      "gfx/enemy_big.png"      4 4 BEST
+
+// Shared by enemy and player death; drawn with PAL_ENEMY (see explosion.c).
+// No PALETTE entry -- it reuses palette_enemy's already-loaded colors.
+SPRITE spr_explosion      "gfx/explosion.png"      2 2 BEST
 SPRITE spr_bullet_player  "gfx/bullet_player.png"  1 1 BEST
 SPRITE spr_bullet_enemy   "gfx/bullet_enemy.png"   1 1 BEST
 SPRITE spr_powerup_spread "gfx/powerup_spread.png" 2 2 BEST
@@ -25,3 +30,7 @@ SPRITE spr_powerup_speed  "gfx/powerup_speed.png"  2 2 BEST
 // tiles by their position in the source sheet.
 TILESET terrain_tileset   "gfx/terrain_tiles.png"   BEST NONE
 TILESET starfield_tileset "gfx/starfield_tiles.png" BEST NONE
+
+// Single opaque tile used to back the HUD side panel (see score.c). Drawn
+// with PAL_SHIP at runtime, so no PALETTE entry is declared for it.
+TILESET hud_fill_tileset  "gfx/hud_fill.png"         BEST NONE

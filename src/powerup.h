@@ -18,6 +18,11 @@ extern Powerup powerups[MAX_POWERUPS];
 void powerups_init(void);
 void powerups_update(void);
 
+// Hides and deactivates every active powerup without releasing its sprite
+// (called on player death, so drifting capsules don't hang frozen on screen
+// through the game-over prompt).
+void powerups_hideAll(void);
+
 // Spawns a drifting powerup capsule at the given position (called on
 // special-enemy death). Type is chosen internally.
 void powerup_spawnAt(s16 x, s16 y);

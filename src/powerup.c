@@ -79,3 +79,16 @@ void powerups_update(void)
         SPR_setPosition(p->sprite, F16_toInt(p->x), py);
     }
 }
+
+void powerups_hideAll(void)
+{
+    for (u16 i = 0; i < MAX_POWERUPS; i++)
+    {
+        Powerup *p = &powerups[i];
+        if (!p->active)
+            continue;
+
+        p->active = FALSE;
+        SPR_setVisibility(p->sprite, HIDDEN);
+    }
+}

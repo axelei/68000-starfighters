@@ -9,11 +9,17 @@
 #define PAL_PWR   PAL2
 #define PAL_TERRA PAL3
 
-// Play area: the region the player ship is allowed to move within, near the
-// bottom of the 320x224 screen.
+// HUD panel: a static column on the right of the screen (see score.c), out
+// of the playfield the player/enemies move within.
+#define HUD_PANEL_COLS       8
+#define HUD_PANEL_COL0        (40 - HUD_PANEL_COLS)  // first panel column
+#define HUD_PANEL_X_PX        (HUD_PANEL_COL0 * 8)   // px where the panel starts
+
+// Play area: the full region (minus small margins) the player/enemies may
+// occupy, to the left of the HUD panel.
 #define PLAY_AREA_X_MIN   8
-#define PLAY_AREA_X_MAX   (320 - 8 - 16)
-#define PLAY_AREA_Y_MIN   120
+#define PLAY_AREA_X_MAX   (HUD_PANEL_X_PX - 8 - 16)
+#define PLAY_AREA_Y_MIN   8
 #define PLAY_AREA_Y_MAX   (224 - 8 - 16)
 
 #define SCREEN_W 320

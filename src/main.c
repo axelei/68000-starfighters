@@ -7,6 +7,7 @@
 #include "formation.h"
 #include "terrain.h"
 #include "powerup.h"
+#include "explosion.h"
 #include "collision.h"
 #include "score.h"
 #include "sfx.h"
@@ -37,11 +38,12 @@ int main(bool hardReset)
         bullets_init();
         enemies_init();
         powerups_init();
+        explosions_init();
         score_init();
         player_init();
         formation_init();
 
-        while (player.alive)
+        while (!player_isGameOver())
         {
             u16 joyState = JOY_readJoypad(JOY_1);
 
@@ -51,6 +53,7 @@ int main(bool hardReset)
             formation_update();
             terrain_update();
             powerups_update();
+            explosions_update();
             collisions_resolve();
             score_hud_update();
             sfx_update();
@@ -58,6 +61,18 @@ int main(bool hardReset)
             SPR_update();
             SYS_doVBlankProcess();
         }
+
+        // Player just died -- hide whatever enemies/bullets/powerups were
+        // still on screen so they don't hang there, frozen, through the
+        // game-over prompt. SPR_update() must run once more here to flush
+        // the visibility change to hardware; the main loop's own call
+        // already ran for this frame before the while() condition was
+        // re-checked.
+        enemies_hideAll();
+        bullets_hideAll();
+        powerups_hideAll();
+        explosions_hideAll();
+        SPR_update();
 
         score_showGameOver();
 

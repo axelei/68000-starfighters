@@ -2,13 +2,40 @@
 #include "resources.h"
 #include "score.h"
 #include "powerup.h"
+#include "bullet.h"
+#include "player.h"
+#include "explosion.h"
 #include "sfx.h"
 
 Enemy enemies[MAX_ENEMIES];
 
-#define ENEMY_SPR_W 16
-#define ENEMY_SPR_H 16
 #define ENTER_DURATION 90 // frames (~1.5s at 60fps)
+#define HIT_FLASH_FRAMES 3
+
+#define HP_BEE     10
+#define HP_SPECIAL 10
+#define HP_BIG     100
+
+// BEE/SPECIAL: occasionally peel out of formation, dive down and off the
+// bottom of the screen, then re-enter from the top back into its slot --
+// same path shape as the initial formation entrance.
+#define DIVE_SPEED_Y          FIX16(2.5)
+#define DIVE_SPEED_X_MAX      FIX16(1.0) // max horizontal drift while diving
+#define DIVE_REENTRY_OFFSET   30         // +/- offset from slot X to re-enter from
+#define DIVE_COOLDOWN_MIN     180 // 3s at 60fps
+#define DIVE_COOLDOWN_RANGE   240 // up to +4s more
+
+// BIG: fires at the player (with some aim error) at random intervals while
+// in formation.
+#define BIG_FIRE_COOLDOWN_MIN   90  // 1.5s
+#define BIG_FIRE_COOLDOWN_RANGE 150 // up to +2.5s more
+#define ENEMY_BULLET_SPEED FIX16(2.0)
+#define ENEMY_AIM_JITTER    FIX16(0.6) // max +/- horizontal aim error
+
+// BIG deaths trigger several staggered explosions across its body instead
+// of just one, since it's much larger than a bee/special.
+#define BIG_EXPLOSION_COUNT       5
+#define BIG_EXPLOSION_STAGGER     6 // frames between each burst starting
 
 void enemies_init(void)
 {
@@ -21,7 +48,37 @@ void enemies_init(void)
 
 static const SpriteDefinition *spriteDefForKind(EnemyKind kind)
 {
-    return (kind == ENEMY_KIND_SPECIAL) ? &spr_enemy_special : &spr_enemy_bee;
+    switch (kind)
+    {
+        case ENEMY_KIND_SPECIAL: return &spr_enemy_special;
+        case ENEMY_KIND_BIG:     return &spr_enemy_big;
+        default:                 return &spr_enemy_bee;
+    }
+}
+
+static s16 maxHpForKind(EnemyKind kind)
+{
+    switch (kind)
+    {
+        case ENEMY_KIND_BIG: return HP_BIG;
+        case ENEMY_KIND_SPECIAL: return HP_SPECIAL;
+        default: return HP_BEE;
+    }
+}
+
+u16 enemy_widthForKind(EnemyKind kind)
+{
+    return (kind == ENEMY_KIND_BIG) ? 32 : 16;
+}
+
+u16 enemy_heightForKind(EnemyKind kind)
+{
+    return (kind == ENEMY_KIND_BIG) ? 32 : 16;
+}
+
+static u16 randomCooldown(u16 minFrames, u16 range)
+{
+    return minFrames + (random() % range);
 }
 
 Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY, s16 delay)
@@ -43,10 +100,16 @@ Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY,
         e->slotY = slotY;
         e->enterTimer = 0;
         e->startDelay = delay;
+        e->maxHp = maxHpForKind(kind);
+        e->hp = e->maxHp;
+        e->flashTimer = 0;
+        e->diveCooldown = randomCooldown(DIVE_COOLDOWN_MIN, DIVE_COOLDOWN_RANGE);
+        e->fireCooldown = randomCooldown(BIG_FIRE_COOLDOWN_MIN, BIG_FIRE_COOLDOWN_RANGE);
 
         if (e->sprite == NULL)
             e->sprite = SPR_addSprite(spriteDefForKind(kind), startX, startY,
                                        TILE_ATTR(PAL_ENEMY, FALSE, FALSE, FALSE));
+        SPR_setAnim(e->sprite, 0);
         SPR_setVisibility(e->sprite, delay > 0 ? HIDDEN : VISIBLE);
         SPR_setPosition(e->sprite, startX, startY);
 
@@ -55,13 +118,39 @@ Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY,
     return NULL;
 }
 
+void enemy_hit(Enemy *e, s16 damage)
+{
+    e->hp -= damage;
+    e->flashTimer = HIT_FLASH_FRAMES;
+    SPR_setAnim(e->sprite, 1);
+
+    if (e->hp <= 0)
+        enemy_kill(e);
+}
+
 void enemy_kill(Enemy *e)
 {
     s16 x = F16_toInt(e->x);
     s16 y = F16_toInt(e->y);
+    u16 w = enemy_widthForKind(e->kind);
+    u16 h = enemy_heightForKind(e->kind);
 
     e->active = FALSE;
     SPR_setVisibility(e->sprite, HIDDEN);
+
+    if (e->kind == ENEMY_KIND_BIG)
+    {
+        for (u16 i = 0; i < BIG_EXPLOSION_COUNT; i++)
+        {
+            s16 cx = x + (s16) (random() % w);
+            s16 cy = y + (s16) (random() % h);
+            explosion_spawnAtDelayed(cx, cy, i * BIG_EXPLOSION_STAGGER);
+        }
+    }
+    else
+    {
+        explosion_spawnAt(x + (s16) w / 2, y + (s16) h / 2);
+    }
 
     score_addKill(e->kind);
     sfx_play_explosion();
@@ -72,7 +161,7 @@ void enemy_kill(Enemy *e)
 
 AABB enemy_getBounds(const Enemy *e)
 {
-    AABB box = {F16_toInt(e->x), F16_toInt(e->y), ENEMY_SPR_W, ENEMY_SPR_H};
+    AABB box = {F16_toInt(e->x), F16_toInt(e->y), enemy_widthForKind(e->kind), enemy_heightForKind(e->kind)};
     return box;
 }
 
@@ -104,7 +193,98 @@ void enemies_update(void)
                 e->y = FIX16(e->slotY);
             }
         }
+        else if (e->state == ENEMY_STATE_IN_FORMATION)
+        {
+            if (e->kind == ENEMY_KIND_BIG)
+            {
+                if (e->fireCooldown > 0)
+                {
+                    e->fireCooldown--;
+                }
+                else
+                {
+                    fix16 bx = e->x + FIX16(enemy_widthForKind(e->kind) / 2 - 4);
+                    fix16 by = e->y + FIX16(enemy_heightForKind(e->kind));
+
+                    fix16 dx = player.x - bx;
+                    fix16 dy = player.y - by;
+                    if (dy < FIX16(20)) dy = FIX16(20); // avoid divide blowup if level with/above the target
+
+                    fix16 vx = F16_mul(F16_div(dx, dy), ENEMY_BULLET_SPEED);
+                    fix16 jitter = (fix16) (random() % (2 * ENEMY_AIM_JITTER + 1)) - ENEMY_AIM_JITTER;
+                    vx += jitter;
+
+                    bullet_spawn_enemy(bx, by, vx, ENEMY_BULLET_SPEED);
+                    e->fireCooldown = randomCooldown(BIG_FIRE_COOLDOWN_MIN, BIG_FIRE_COOLDOWN_RANGE);
+                }
+            }
+            else
+            {
+                if (e->diveCooldown > 0)
+                {
+                    e->diveCooldown--;
+                }
+                else
+                {
+                    s16 drift = (s16) (random() % (2 * DIVE_SPEED_X_MAX + 1)) - DIVE_SPEED_X_MAX;
+                    e->vx = drift;
+                    e->vy = DIVE_SPEED_Y;
+                    e->state = ENEMY_STATE_DIVING_OUT;
+                }
+            }
+        }
+        else if (e->state == ENEMY_STATE_DIVING_OUT)
+        {
+            e->x += e->vx;
+            e->y += e->vy;
+
+            s16 px = F16_toInt(e->x);
+            u16 w = enemy_widthForKind(e->kind);
+            if (px < PLAY_AREA_X_MIN) { px = PLAY_AREA_X_MIN; e->x = FIX16(px); }
+            if (px > PLAY_AREA_X_MAX - (s16) w + 16) { px = PLAY_AREA_X_MAX - (s16) w + 16; e->x = FIX16(px); }
+
+            if (F16_toInt(e->y) > SCREEN_H)
+            {
+                // Passed off the bottom of the screen -- reappear from
+                // above and swoop back into its slot, same as the initial
+                // formation entrance.
+                s16 h = (s16) enemy_heightForKind(e->kind);
+                s16 side = (random() & 1) ? DIVE_REENTRY_OFFSET : -DIVE_REENTRY_OFFSET;
+                s16 startX = e->slotX + side;
+                if (startX < PLAY_AREA_X_MIN) startX = PLAY_AREA_X_MIN;
+                if (startX > PLAY_AREA_X_MAX) startX = PLAY_AREA_X_MAX;
+                s16 startY = -h - 10;
+
+                e->x = FIX16(startX);
+                e->y = FIX16(startY);
+                e->vx = FIX16(e->slotX - startX) / ENTER_DURATION;
+                e->vy = FIX16(e->slotY - startY) / ENTER_DURATION;
+                e->enterTimer = 0;
+                e->state = ENEMY_STATE_ENTERING;
+                e->diveCooldown = randomCooldown(DIVE_COOLDOWN_MIN, DIVE_COOLDOWN_RANGE);
+            }
+        }
+
+        if (e->flashTimer > 0)
+        {
+            e->flashTimer--;
+            if (e->flashTimer == 0)
+                SPR_setAnim(e->sprite, 0);
+        }
 
         SPR_setPosition(e->sprite, F16_toInt(e->x), F16_toInt(e->y));
+    }
+}
+
+void enemies_hideAll(void)
+{
+    for (u16 i = 0; i < MAX_ENEMIES; i++)
+    {
+        Enemy *e = &enemies[i];
+        if (!e->active)
+            continue;
+
+        e->active = FALSE;
+        SPR_setVisibility(e->sprite, HIDDEN);
     }
 }

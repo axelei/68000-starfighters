@@ -55,10 +55,10 @@ static void fillStarfieldPlane(void)
         for (u16 x = 0; x < PLANE_W_TILES; x++)
         {
             // Mostly empty space (tile 0) with sparse star tiles (1,2),
-            // using a cheap deterministic hash instead of true randomness
-            // so the pattern is stable across rebuilds.
-            u16 hash = (x * 7 + y * 13) & 31;
-            u16 variant = (hash == 0) ? 1 : (hash == 17 ? 2 : 0);
+            // scattered via random() rather than a fixed hash so the pattern
+            // isn't a visibly repeating grid.
+            u16 roll = random() & 31;
+            u16 variant = (roll == 0) ? 1 : (roll == 1 ? 2 : 0);
             u16 tile = TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, STARFIELD_BASE_TILE + variant);
             VDP_setTileMapXY(BG_B, tile, x, y);
         }

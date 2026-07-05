@@ -4,6 +4,8 @@
 #include "enemy.h"
 #include "powerup.h"
 
+#define BULLET_DAMAGE 1
+
 bool aabb_overlaps(AABB a, AABB b)
 {
     if (a.x + a.w <= b.x) return FALSE;
@@ -32,7 +34,7 @@ static void resolvePlayerBulletsVsEnemies(void)
             if (aabb_overlaps(bbox, enemy_getBounds(e)))
             {
                 bullet_deactivate(b);
-                enemy_kill(e);
+                enemy_hit(e, BULLET_DAMAGE);
                 break;
             }
         }

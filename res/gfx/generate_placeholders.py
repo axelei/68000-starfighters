@@ -37,11 +37,17 @@ def fill_rect(img, x0, y0, x1, y1, idx):
 
 
 def player_ship():
-    # palette 0: player/bullets/UI. Index 1 is also the color used for HUD
-    # text (VDP_drawText's default font uses PAL0 / index 1 for its ink),
-    # so it's kept a near-white for readability rather than the hull's
-    # "natural" color.
-    pal = [TRANSPARENT, (235, 235, 245), (140, 220, 255), (40, 120, 180)]
+    # palette 0: player/bullets/UI. SGDK's default font (font_default.png)
+    # is authored with its ink pixels at color index 15 (not 1!), and
+    # VDP_drawText always renders using whichever hardware palette is
+    # currently selected as the text palette (PAL_SHIP/PAL0 here, the
+    # default). So index 15 is reserved as white for HUD text and left
+    # unused by the ship artwork itself.
+    pal = [TRANSPARENT] * 16
+    pal[1] = (140, 220, 255)   # hull
+    pal[2] = (235, 235, 245)   # nose highlight
+    pal[3] = (40, 120, 180)    # engine glow accents
+    pal[15] = (255, 255, 255) # HUD font ink
     img = new_indexed((16, 16), pal)
     # upward-pointing triangle, cockpit highlight
     for row in range(16):
@@ -58,35 +64,127 @@ def player_ship():
     return img
 
 
+# palette 1 (PAL_ENEMY): shared by every enemy kind (bee/special/big), since
+# only one of their source images (enemy_bee.png, via the PALETTE
+# declaration in resources.res) actually gets loaded onto the hardware
+# palette -- the others' pixel *indices* must agree with this same mapping
+# or their colors come out wrong. Index 4 is reserved solid white, used for
+# the hit-flash frame (see enemy.c's enemy_hit()/SPR_setFrame).
+ENEMY_PAL = [TRANSPARENT, (255, 90, 90), (255, 200, 90), (140, 30, 30), (255, 255, 255)]
+
+
+def _enemy_frames(w, h, draw_fn):
+    """Builds a 2-row sprite sheet for rescomp's SPRITE resource, where each
+    *row* is a separate single-frame animation (row 0 = normal, row 1 = the
+    same silhouette lit up solid white) -- selected at runtime via
+    SPR_setAnim() for the enemy hit-flash effect (see enemy.c)."""
+    normal = new_indexed((w, h), ENEMY_PAL)
+    draw_fn(normal)
+
+    combined = new_indexed((w, h * 2), ENEMY_PAL)
+    for y in range(h):
+        for x in range(w):
+            v = normal.getpixel((x, y))
+            set_px(combined, x, y, v)
+            set_px(combined, x, y + h, 4 if v != 0 else 0)
+    return combined
+
+
 def enemy_bee():
-    # palette 1: enemies
-    pal = [TRANSPARENT, (255, 90, 90), (255, 200, 90), (140, 30, 30)]
-    img = new_indexed((16, 16), pal)
-    # downward-pointing diamond
-    for row in range(16):
-        dist_from_mid = abs(row - 7.5)
-        half_width = int(8 - dist_from_mid)
-        cx = 8
-        x0 = max(0, cx - half_width)
-        x1 = min(16, cx + half_width)
-        fill_rect(img, x0, row, x1, row + 1, 1)
-    fill_rect(img, 6, 6, 10, 10, 2)
-    return img
+    def draw(img):
+        # downward-pointing diamond
+        for row in range(16):
+            dist_from_mid = abs(row - 7.5)
+            half_width = int(8 - dist_from_mid)
+            cx = 8
+            x0 = max(0, cx - half_width)
+            x1 = min(16, cx + half_width)
+            fill_rect(img, x0, row, x1, row + 1, 1)
+        fill_rect(img, 6, 6, 10, 10, 2)
+
+    return _enemy_frames(16, 16, draw)
 
 
 def enemy_special():
-    # palette 1: enemies (bright, distinct from grunt so it reads as "special")
-    pal = [TRANSPARENT, (200, 90, 255), (255, 230, 120), (110, 30, 160)]
-    img = new_indexed((16, 16), pal)
-    cx, cy, r = 8, 8, 7
-    for y in range(16):
-        for x in range(16):
-            d2 = (x - cx + 0.5) ** 2 + (y - cy + 0.5) ** 2
-            if d2 <= r * r:
-                set_px(img, x, y, 1)
-    fill_rect(img, 6, 6, 10, 10, 2)
-    fill_rect(img, 0, 7, 16, 9, 3)
-    return img
+    def draw(img):
+        cx, cy, r = 8, 8, 7
+        for y in range(16):
+            for x in range(16):
+                d2 = (x - cx + 0.5) ** 2 + (y - cy + 0.5) ** 2
+                if d2 <= r * r:
+                    set_px(img, x, y, 1)
+        fill_rect(img, 6, 6, 10, 10, 2)
+        fill_rect(img, 0, 7, 16, 9, 3)
+
+    return _enemy_frames(16, 16, draw)
+
+
+def enemy_big():
+    def draw(img):
+        # blocky 32x32 "capital ship" silhouette
+        fill_rect(img, 2, 4, 30, 28, 3)
+        fill_rect(img, 6, 0, 26, 6, 1)
+        fill_rect(img, 0, 14, 32, 18, 1)
+        fill_rect(img, 12, 8, 20, 22, 2)
+
+    return _enemy_frames(32, 32, draw)
+
+
+def explosion():
+    # 4-frame animation, arranged as a single row (rescomp treats each row as
+    # one animation and each column as a frame within it -- see enemy.c's
+    # note about SPR_setAnim vs SPR_setFrame). Reuses ENEMY_PAL's colors
+    # directly (no hardware palette free to dedicate to it -- all 4 are
+    # already used by ship/enemy/powerup/terrain), which happens to already
+    # be a fiery red/yellow/white set well-suited to an explosion. Used by
+    # both enemy and player deaths (see enemy.c/player.c), drawn with
+    # PAL_ENEMY regardless of who died.
+    w = h = 16
+    cx = cy = 8
+
+    def frame0(img):  # initial bright flash
+        for y in range(h):
+            for x in range(w):
+                d2 = (x - cx + 0.5) ** 2 + (y - cy + 0.5) ** 2
+                if d2 <= 3 * 3:
+                    set_px(img, x, y, 4)
+                elif d2 <= 5 * 5:
+                    set_px(img, x, y, 2)
+
+    def frame1(img):  # expanding ring
+        for y in range(h):
+            for x in range(w):
+                d2 = (x - cx + 0.5) ** 2 + (y - cy + 0.5) ** 2
+                if 3 * 3 <= d2 <= 4 * 4:
+                    set_px(img, x, y, 4)
+                elif 4 * 4 < d2 <= 7 * 7:
+                    set_px(img, x, y, 2)
+
+    def frame2(img):  # bigger, dimmer ring
+        for y in range(h):
+            for x in range(w):
+                d2 = (x - cx + 0.5) ** 2 + (y - cy + 0.5) ** 2
+                if 5 * 5 <= d2 < 6 * 6:
+                    set_px(img, x, y, 3)
+                elif 6 * 6 <= d2 <= 8 * 8:
+                    set_px(img, x, y, 1)
+
+    def frame3(img):  # sparse fading embers
+        for (x, y) in [(2, 3), (13, 4), (4, 12), (11, 13), (8, 1), (1, 9), (14, 10), (7, 14)]:
+            set_px(img, x, y, 3)
+
+    frames = []
+    for fn in (frame0, frame1, frame2, frame3):
+        img = new_indexed((w, h), ENEMY_PAL)
+        fn(img)
+        frames.append(img)
+
+    combined = new_indexed((w * len(frames), h), ENEMY_PAL)
+    for i, fr in enumerate(frames):
+        for y in range(h):
+            for x in range(w):
+                set_px(combined, i * w + x, y, fr.getpixel((x, y)))
+    return combined
 
 
 def bullet_player():
@@ -98,10 +196,16 @@ def bullet_player():
 
 
 def bullet_enemy():
-    pal = [TRANSPARENT, (255, 120, 60)]
+    pal = [TRANSPARENT, (255, 120, 60), (255, 210, 160)]
     img = new_indexed((8, 8), pal)
-    fill_rect(img, 3, 0, 5, 8, 1)
-    fill_rect(img, 2, 2, 6, 6, 1)
+    cx, cy, r = 3.5, 3.5, 3.5
+    for y in range(8):
+        for x in range(8):
+            d2 = (x - cx) ** 2 + (y - cy) ** 2
+            if d2 <= r * r:
+                set_px(img, x, y, 1)
+    # small bright highlight so it doesn't read as a flat disc
+    set_px(img, 3, 3, 2)
     return img
 
 
@@ -171,16 +275,33 @@ def starfield_tiles():
     return img
 
 
+def hud_fill():
+    # A single fully-opaque tile used to back the HUD side panel so the
+    # scrolling terrain/starfield and any sprites transiting behind it don't
+    # show through. Drawn at runtime with PAL_SHIP selected, so what matters
+    # is the pixel *index* (14, arbitrary but non-zero/non-15 so it doesn't
+    # collide with the transparent or font-ink colors) -- this tile's own
+    # local palette is never loaded onto hardware.
+    pal = [TRANSPARENT] * 15
+    pal[14] = (0, 0, 0)
+    img = new_indexed((8, 8), pal)
+    fill_rect(img, 0, 0, 8, 8, 14)
+    return img
+
+
 GENERATORS = {
     "player_ship.png": player_ship,
     "enemy_bee.png": enemy_bee,
     "enemy_special.png": enemy_special,
+    "enemy_big.png": enemy_big,
+    "explosion.png": explosion,
     "bullet_player.png": bullet_player,
     "bullet_enemy.png": bullet_enemy,
     "powerup_spread.png": powerup_spread,
     "powerup_speed.png": powerup_speed,
     "terrain_tiles.png": terrain_tiles,
     "starfield_tiles.png": starfield_tiles,
+    "hud_fill.png": hud_fill,
 }
 
 if __name__ == "__main__":

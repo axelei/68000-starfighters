@@ -95,6 +95,21 @@ void bullets_update(void)
     update_pool(enemyBullets, MAX_ENEMY_BULLETS);
 }
 
+static void hideAll_pool(Bullet *pool, u16 count)
+{
+    for (u16 i = 0; i < count; i++)
+    {
+        if (pool[i].active)
+            bullet_deactivate(&pool[i]);
+    }
+}
+
+void bullets_hideAll(void)
+{
+    hideAll_pool(playerBullets, MAX_PLAYER_BULLETS);
+    hideAll_pool(enemyBullets, MAX_ENEMY_BULLETS);
+}
+
 AABB bullet_getBounds(const Bullet *b)
 {
     AABB box = {F16_toInt(b->x), F16_toInt(b->y), BULLET_SPR_W, BULLET_SPR_H};
