@@ -122,12 +122,17 @@ static const TerrainClump *findApproachingClump(void)
     return candidates[random() % count];
 }
 
+// A turret is allowed to appear once the formation's small (BEE/SPECIAL)
+// enemies are gone, OR once the formation is thinned out enough (fewer than
+// this many enemies of any kind left) -- not just when it's fully cleared.
+#define TURRET_ELIGIBLE_ENEMY_COUNT 6
+
 static void trySpawn(void)
 {
-    // Turrets are a ground-based threat that only shows up once the
-    // formation's small (BEE/SPECIAL) enemies are gone, and never more
-    // than MAX_TURRETS at a time.
-    if (countActive() >= MAX_TURRETS || enemies_countSmall() > 0)
+    // Never more than MAX_TURRETS at a time.
+    if (countActive() >= MAX_TURRETS)
+        return;
+    if (enemies_countSmall() > 0 && enemies_countActive() >= TURRET_ELIGIBLE_ENEMY_COUNT)
         return;
 
     const TerrainClump *clump = findApproachingClump();
@@ -238,11 +243,18 @@ void turrets_update(void)
                 fix16 dy = player.y - by;
                 if (dy < FIX16(20)) dy = FIX16(20); // avoid divide blowup if level with/above the target
 
-                fix16 vx = F16_mul(F16_div(dx, dy), TURRET_BULLET_SPEED);
+                // Normalize (dx,dy) to a unit vector before scaling by
+                // speed -- deriving vx from the slope while holding vy
+                // fixed (the old approach) made the total velocity grow
+                // with how horizontal the shot was, since vy never shrank
+                // to compensate for a larger vx.
+                fix16 dist = (fix16) getApproximatedDistance(dx, dy);
+                fix16 vx = F16_mul(F16_div(dx, dist), TURRET_BULLET_SPEED);
+                fix16 vy = F16_mul(F16_div(dy, dist), TURRET_BULLET_SPEED);
                 fix16 jitter = (fix16) (random() % (2 * TURRET_AIM_JITTER + 1)) - TURRET_AIM_JITTER;
                 vx += jitter;
 
-                bullet_spawn_enemy(bx, by, vx, TURRET_BULLET_SPEED);
+                bullet_spawn_enemy(bx, by, vx, vy);
                 sfx_play_shoot();
 
                 t->fireCooldown = randomCooldown(FIRE_COOLDOWN_MIN, FIRE_COOLDOWN_RANGE);

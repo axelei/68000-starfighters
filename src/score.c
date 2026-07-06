@@ -13,7 +13,8 @@
 #define SIDE_PANEL_HPOS (HUD_PANEL_COL0 / 2) // 2-tile units, must be even
 #define SCREEN_H_TILES  (SCREEN_H / 8)
 
-#define HUD_FILL_TILE (TILE_USER_INDEX + 32) // past terrain(4)/starfield(3) tiles
+#define HUD_FILL_TILE      (TILE_USER_INDEX + 32) // past terrain(4)/starfield(3) tiles
+#define HUD_SEPARATOR_TILE (TILE_USER_INDEX + 33)
 
 #define SCORE_HUD_X (HUD_PANEL_COL0 + 1)
 #define SCORE_HUD_Y 2
@@ -22,19 +23,19 @@
 #define WAVE_HUD_X  (HUD_PANEL_COL0 + 1)
 #define WAVE_HUD_Y  10
 
-// Near the top of the screen rather than mid-screen: the WINDOW plane's
-// vertical position can only band rows from the top or bottom edge (never
-// a floating band in the middle), so anchoring the text there lets
-// VDP_setWindowVPos cover just those rows -- terrain stays visible
-// everywhere else instead of the window swallowing the whole screen.
-#define GAMEOVER_HUD_Y 2
-#define GAMEOVER_BAND_ROWS 12
+// The WINDOW plane's vertical position can only band rows from the top or
+// bottom edge (never a floating band in the middle), so to get text reading
+// as "the middle of the playfield" the band is anchored at the top but sized
+// to reach just past screen-vertical-center (row SCREEN_H_TILES/2 = 14),
+// with the text itself placed near the band's bottom edge.
+#define GAMEOVER_HUD_Y 8
+#define GAMEOVER_BAND_ROWS 18
 
-// Same top-band trick as the game-over screen, but a smaller band just for
-// the "WAVE N" announcement (see formation.c), which only ever shows during
-// the pause between waves when no enemies are on screen.
-#define WAVE_ANNOUNCE_BAND_ROWS 6
-#define WAVE_ANNOUNCE_TEXT_Y    2
+// Same top-band trick as the game-over screen, but just for the "WAVE N"
+// announcement (see formation.c), which only ever shows during the pause
+// between waves when no enemies are on screen.
+#define WAVE_ANNOUNCE_BAND_ROWS 14
+#define WAVE_ANNOUNCE_TEXT_Y    13
 
 #define POINTS_BEE     100
 #define POINTS_SPECIAL 300
@@ -69,6 +70,7 @@ void score_init(void)
     if (!tilesetLoaded)
     {
         VDP_loadTileSet(&hud_fill_tileset, HUD_FILL_TILE, CPU);
+        VDP_loadTileSet(&hud_separator_tileset, HUD_SEPARATOR_TILE, CPU);
         tilesetLoaded = TRUE;
     }
 
@@ -76,7 +78,14 @@ void score_init(void)
     // banded it to the top rows on the previous round).
     VDP_setWindowHPos(TRUE, SIDE_PANEL_HPOS);
     VDP_setWindowVPos(FALSE, 0);
-    fillWindowRect(HUD_PANEL_COL0, 0, 40, SCREEN_H_TILES);
+
+    // The panel's leftmost column is a red divider line; the rest is the
+    // opaque black background (text starts one column further in, at
+    // HUD_PANEL_COL0 + 1, so it never overlaps the line).
+    u16 separatorTile = TILE_ATTR_FULL(PAL_SHIP, TRUE, FALSE, FALSE, HUD_SEPARATOR_TILE);
+    for (u16 y = 0; y < SCREEN_H_TILES; y++)
+        VDP_setTileMapXY(WINDOW, separatorTile, HUD_PANEL_COL0, y);
+    fillWindowRect(HUD_PANEL_COL0 + 1, 0, 40, SCREEN_H_TILES);
 
     VDP_drawText("SCORE", SCORE_HUD_X, SCORE_HUD_Y);
     VDP_drawText("LIVES", LIVES_HUD_X, LIVES_HUD_Y);
@@ -139,10 +148,10 @@ void score_hud_update(void)
 void score_showWaveAnnouncement(u16 waveNumber)
 {
     // Bands the WINDOW's top rows across the full width (same OR-with-HPos
-    // trick as score_showGameOver()), so the banner is readable over
-    // whatever's behind it without hiding the rest of the screen.
+    // trick as score_showGameOver()). Left blank/transparent (no opaque
+    // fill) so it's plain white text floating over the playfield, not a
+    // black bar -- only the HUD side panel gets an opaque background.
     VDP_setWindowVPos(FALSE, WAVE_ANNOUNCE_BAND_ROWS);
-    fillWindowRect(0, 0, HUD_PANEL_COL0, WAVE_ANNOUNCE_BAND_ROWS);
 
     char text[16] = "WAVE ";
     char num[4];
@@ -170,8 +179,9 @@ void score_showGameOver(void)
     // these top rows (game-over text) while leaving the rest of the screen
     // (terrain, enemies, etc.) still visible underneath, rather than
     // covering the entire screen the way expanding HPos to full width would.
+    // Left blank/transparent (no opaque fill) so it's plain white text
+    // floating over the playfield, not a black bar.
     VDP_setWindowVPos(FALSE, GAMEOVER_BAND_ROWS);
-    fillWindowRect(0, 0, HUD_PANEL_COL0, GAMEOVER_BAND_ROWS);
 
     VDP_drawText("GAME OVER", 13, GAMEOVER_HUD_Y);
     VDP_drawText("FINAL SCORE", 12, GAMEOVER_HUD_Y + 2);

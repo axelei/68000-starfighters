@@ -308,11 +308,18 @@ void enemies_update(void)
                     fix16 dy = player.y - by;
                     if (dy < FIX16(20)) dy = FIX16(20); // avoid divide blowup if level with/above the target
 
-                    fix16 vx = F16_mul(F16_div(dx, dy), ENEMY_BULLET_SPEED);
+                    // Normalize (dx,dy) to a unit vector before scaling by
+                    // speed -- deriving vx from the slope while holding vy
+                    // fixed (the old approach) made the total velocity grow
+                    // with how horizontal the shot was, since vy never
+                    // shrank to compensate for a larger vx.
+                    fix16 dist = (fix16) getApproximatedDistance(dx, dy);
+                    fix16 vx = F16_mul(F16_div(dx, dist), ENEMY_BULLET_SPEED);
+                    fix16 vy = F16_mul(F16_div(dy, dist), ENEMY_BULLET_SPEED);
                     fix16 jitter = (fix16) (random() % (2 * ENEMY_AIM_JITTER + 1)) - ENEMY_AIM_JITTER;
                     vx += jitter;
 
-                    bullet_spawn_enemy(bx, by, vx, ENEMY_BULLET_SPEED);
+                    bullet_spawn_enemy(bx, by, vx, vy);
                     e->fireCooldown = randomCooldown(BIG_FIRE_COOLDOWN_MIN, BIG_FIRE_COOLDOWN_RANGE);
                 }
             }

@@ -1,7 +1,10 @@
 """Generates placeholder sprite/tile PNGs for SGDK's rescomp.
 
 Kept alongside the source PNGs it produces. Re-run after editing this script
-to regenerate assets: `python generate_placeholders.py`.
+to regenerate assets:
+    python generate_placeholders.py                  # everything
+    python generate_placeholders.py turret hud_fill   # just these (name or name.png)
+    python generate_placeholders.py --force turret    # overwrite even if uncommitted
 
 Genesis constraint: sprites/tiles are 4bpp indexed (<=16 colors per
 palette), so every image here is saved in "P" (palette) mode with a small
@@ -51,10 +54,13 @@ def player_ship():
     # left / leaning right -- see player.c), same convention as enemy_bee()
     # etc. Each lean shears the silhouette (nose shifts one way, engine base
     # the other) so it reads as banking into the turn.
+    # Index 4 is the HUD side-panel separator line's color (see
+    # hud_separator()), which is drawn with this same palette at runtime.
     pal = [TRANSPARENT] * 16
     pal[1] = (140, 220, 255)   # hull
     pal[2] = (235, 235, 245)   # nose highlight
     pal[3] = (40, 120, 180)    # engine glow accents
+    pal[4] = (200, 30, 30)     # HUD separator line (red)
     pal[15] = (255, 255, 255) # HUD font ink
 
     def draw(lean):
@@ -409,6 +415,18 @@ def hud_fill():
     return img
 
 
+def hud_separator():
+    # A single tile, solid red, marking the boundary column between the
+    # playfield and the HUD side panel (see score.c). Drawn at runtime with
+    # PAL_SHIP selected, reusing its index 4 (see player_ship()) -- this
+    # tile's own local palette is never loaded onto hardware.
+    pal = [TRANSPARENT] * 5
+    pal[4] = (200, 30, 30)
+    img = new_indexed((8, 8), pal)
+    fill_rect(img, 0, 0, 8, 8, 4)
+    return img
+
+
 GENERATORS = {
     "player_ship.png": player_ship,
     "enemy_bee.png": enemy_bee,
@@ -424,6 +442,7 @@ GENERATORS = {
     "starfield_tiles.png": starfield_tiles,
     "turret.png": turret,
     "hud_fill.png": hud_fill,
+    "hud_separator.png": hud_separator,
 }
 
 def git_is_dirty(path):
@@ -444,9 +463,21 @@ def git_is_dirty(path):
 if __name__ == "__main__":
     import sys
 
-    force = "--force" in sys.argv[1:]
+    args = sys.argv[1:]
+    force = "--force" in args
+    names = [a for a in args if not a.startswith("--")]
 
-    for filename, gen in GENERATORS.items():
+    if names:
+        targets = {}
+        for name in names:
+            filename = name if name.endswith(".png") else name + ".png"
+            if filename not in GENERATORS:
+                raise SystemExit(f"unknown target '{name}' -- available: {', '.join(sorted(GENERATORS))}")
+            targets[filename] = GENERATORS[filename]
+    else:
+        targets = GENERATORS
+
+    for filename, gen in targets.items():
         if not force and os.path.exists(filename) and git_is_dirty(filename):
             print(f"skipped {filename}: uncommitted changes -- commit/discard them or pass --force to overwrite")
             continue

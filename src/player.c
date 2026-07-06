@@ -25,7 +25,9 @@ PlayerState player;
 #define ANIM_LEAN_RIGHT 2
 
 #define BASE_SPEED       FIX16(1.5)
-#define SPEED_BOOST_MUL  FIX16(1.6)
+// 1.5 * 1.6 precomputed at compile time -- avoids an F16_mul() call every
+// single frame the speed powerup is active (mul/div are costly on the 68000).
+#define BOOSTED_SPEED    FIX16(2.4)
 #define FIRE_COOLDOWN     8
 #define BULLET_SPEED     FIX16(4.0)
 #define SPREAD_ANGLE_VX  FIX16(1.0)
@@ -150,9 +152,7 @@ void player_update(u16 joyState)
         return;
     }
 
-    fix16 speed = BASE_SPEED;
-    if (player.activePowerup == POWERUP_SPEED)
-        speed = F16_mul(BASE_SPEED, SPEED_BOOST_MUL);
+    fix16 speed = (player.activePowerup == POWERUP_SPEED) ? BOOSTED_SPEED : BASE_SPEED;
 
     if (joyState & BUTTON_UP)    player.y -= speed;
     if (joyState & BUTTON_DOWN)  player.y += speed;

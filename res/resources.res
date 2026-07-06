@@ -42,4 +42,8 @@ TILESET starfield_tileset "gfx/starfield_tiles.png" BEST NONE
 
 // Single opaque tile used to back the HUD side panel (see score.c). Drawn
 // with PAL_SHIP at runtime, so no PALETTE entry is declared for it.
-TILESET hud_fill_tileset  "gfx/hud_fill.png"         BEST NONE
+TILESET hud_fill_tileset      "gfx/hud_fill.png"      BEST NONE
+
+// Red divider line between the playfield and the HUD side panel (see
+// score.c). Drawn with PAL_SHIP at runtime (index 4, see player_ship()).
+TILESET hud_separator_tileset "gfx/hud_separator.png" BEST NONE

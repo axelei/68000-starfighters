@@ -33,6 +33,13 @@ void title_run(void)
     // (and possibly wrapped) on screen by that leftover scroll amount.
     VDP_setVerticalScroll(BG_A, 0);
 
+    // score_showGameOver() bands the WINDOW's top rows and never resets it
+    // (there's no corresponding "hide" call before returning here, unlike
+    // the wave announcement) -- left alone, that band is still active and,
+    // since it's transparent rather than opaque-filled, hides the logo
+    // behind it (revealing BG_B, not BG_A, within the window's band).
+    VDP_setWindowVPos(FALSE, 0);
+
     VDP_drawImageEx(BG_A, &title_image, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, TITLE_BASE_TILE),
                      LOGO_TILE_X, LOGO_TILE_Y, TRUE, FALSE);
 

@@ -24,8 +24,9 @@
 
 static u16 waveIndex;       // which WaveDef (mod WAVE_COUNT) is currently in play
 static u16 wavesCleared;
-static u16 clearDelayTimer;  // >0 while waiting to spawn the next wave
-static u16 announceTimer;    // >0 while the "WAVE N" banner is showing
+static u16 clearDelayTimer;   // >0 while waiting to spawn the next wave
+static u16 announceTimer;     // >0 while the "WAVE N" banner is showing
+static bool waveSpawnPending;  // enemies for waveIndex haven't been spawned yet
 
 static bool isSpecialSlot(const WaveDef *wave, u16 row, u16 col)
 {
@@ -86,9 +87,12 @@ static void spawnWave(u16 index)
     }
 }
 
+// Only shows the "WAVE N" banner -- the actual enemies don't swoop in until
+// it finishes (see formation_update()), so the announcement isn't competing
+// with combat for the player's attention.
 static void startWave(u16 index)
 {
-    spawnWave(index);
+    waveSpawnPending = TRUE;
     score_showWaveAnnouncement(index % WAVE_COUNT + 1);
     announceTimer = WAVE_ANNOUNCE_FRAMES;
 }
@@ -99,6 +103,7 @@ void formation_init(void)
     wavesCleared = 0;
     clearDelayTimer = 0;
     announceTimer = 0;
+    waveSpawnPending = FALSE;
     startWave(waveIndex);
 }
 
@@ -108,7 +113,17 @@ void formation_update(void)
     {
         announceTimer--;
         if (announceTimer == 0)
+        {
             score_hideWaveAnnouncement();
+            if (waveSpawnPending)
+            {
+                spawnWave(waveIndex);
+                waveSpawnPending = FALSE;
+            }
+        }
+        // Don't also check for a wave clear below while the banner is up --
+        // there are deliberately no enemies on screen yet.
+        return;
     }
 
     if (clearDelayTimer > 0)
