@@ -39,7 +39,8 @@ static void respawn(void)
 void player_init(void)
 {
     player.lives = STARTING_LIVES;
-    player.sprite = SPR_addSprite(&spr_player, 0, 0, TILE_ATTR(PAL_SHIP, TRUE, FALSE, FALSE));
+    if (player.sprite == NULL)
+        player.sprite = SPR_addSprite(&spr_player, 0, 0, TILE_ATTR(PAL_SHIP, TRUE, FALSE, FALSE));
     respawn();
 }
 

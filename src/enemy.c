@@ -37,13 +37,68 @@ Enemy enemies[MAX_ENEMIES];
 #define BIG_EXPLOSION_COUNT       5
 #define BIG_EXPLOSION_STAGGER     6 // frames between each burst starting
 
+// BEE/SPECIAL only: caps how many can be away from their formation slot
+// (diving out and/or swooping back in) at the same time.
+#define MAX_CONCURRENT_DIVERS 5
+
+static u16 activeDivers;
+
+// All enemies of a given kind look identical (differing only in position),
+// so their tile graphics are uploaded to VRAM exactly once per kind here
+// instead of once per active enemy -- SPR_addSprite's default behaviour
+// would otherwise give each of the up to MAX_ENEMIES sprites its own
+// private VRAM copy of the same pixels, wasting a lot of the sprite
+// engine's limited tile budget. Each enemy instance just points its
+// "VRAM tile index" attribute at the shared normal/flash block for its
+// kind (see SPR_setVRAMTileIndex calls below) rather than using
+// SPR_setAnim/SPR_setFrame, which would try to re-upload tile data.
+static u16 normalTile[3];
+static u16 flashTile[3];
+static bool tilesLoaded = FALSE;
+
+#define ENEMY_TILE_BASE (TILE_USER_INDEX + 128)
+
+static void loadSharedTiles(void)
+{
+    if (tilesLoaded)
+        return;
+
+    u16 totalTiles;
+    u16 base = ENEMY_TILE_BASE;
+
+    u16 **idx = SPR_loadAllFrames(&spr_enemy_bee, base, &totalTiles);
+    normalTile[ENEMY_KIND_BEE] = idx[0][0];
+    flashTile[ENEMY_KIND_BEE] = idx[1][0];
+    MEM_free(idx);
+    base += totalTiles;
+
+    idx = SPR_loadAllFrames(&spr_enemy_special, base, &totalTiles);
+    normalTile[ENEMY_KIND_SPECIAL] = idx[0][0];
+    flashTile[ENEMY_KIND_SPECIAL] = idx[1][0];
+    MEM_free(idx);
+    base += totalTiles;
+
+    idx = SPR_loadAllFrames(&spr_enemy_big, base, &totalTiles);
+    normalTile[ENEMY_KIND_BIG] = idx[0][0];
+    flashTile[ENEMY_KIND_BIG] = idx[1][0];
+    MEM_free(idx);
+
+    tilesLoaded = TRUE;
+}
+
 void enemies_init(void)
 {
+    loadSharedTiles();
+
     for (u16 i = 0; i < MAX_ENEMIES; i++)
     {
         enemies[i].active = FALSE;
-        enemies[i].sprite = NULL;
+        enemies[i].diving = FALSE;
+        // Sprite handles are intentionally left alone here (not nulled) so
+        // a re-init (title -> game restart) reuses each slot's existing
+        // SPR_addSprite handle instead of leaking a new one every game.
     }
+    activeDivers = 0;
 }
 
 static const SpriteDefinition *spriteDefForKind(EnemyKind kind)
@@ -103,13 +158,23 @@ Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY,
         e->maxHp = maxHpForKind(kind);
         e->hp = e->maxHp;
         e->flashTimer = 0;
+        e->diving = FALSE;
         e->diveCooldown = randomCooldown(DIVE_COOLDOWN_MIN, DIVE_COOLDOWN_RANGE);
         e->fireCooldown = randomCooldown(BIG_FIRE_COOLDOWN_MIN, BIG_FIRE_COOLDOWN_RANGE);
 
         if (e->sprite == NULL)
-            e->sprite = SPR_addSprite(spriteDefForKind(kind), startX, startY,
-                                       TILE_ATTR(PAL_ENEMY, FALSE, FALSE, FALSE));
-        SPR_setAnim(e->sprite, 0);
+            e->sprite = SPR_addSpriteEx(spriteDefForKind(kind), startX, startY,
+                                         TILE_ATTR_FULL(PAL_ENEMY, FALSE, FALSE, FALSE, normalTile[kind]), 0);
+        else
+        {
+            // This pool slot may have last held a different-sized kind
+            // (e.g. a BEE reused for a BIG after a restart reshuffles the
+            // formation) -- SPR_setDefinition() fixes up the sprite's shape;
+            // it's a cheap metadata-only update here since VRAM is manually
+            // managed (no SPR_FLAG_AUTO_VRAM_ALLOC).
+            SPR_setDefinition(e->sprite, spriteDefForKind(kind));
+            SPR_setVRAMTileIndex(e->sprite, normalTile[kind]);
+        }
         SPR_setVisibility(e->sprite, delay > 0 ? HIDDEN : VISIBLE);
         SPR_setPosition(e->sprite, startX, startY);
 
@@ -122,7 +187,7 @@ void enemy_hit(Enemy *e, s16 damage)
 {
     e->hp -= damage;
     e->flashTimer = HIT_FLASH_FRAMES;
-    SPR_setAnim(e->sprite, 1);
+    SPR_setVRAMTileIndex(e->sprite, flashTile[e->kind]);
 
     if (e->hp <= 0)
         enemy_kill(e);
@@ -137,6 +202,12 @@ void enemy_kill(Enemy *e)
 
     e->active = FALSE;
     SPR_setVisibility(e->sprite, HIDDEN);
+
+    if (e->diving)
+    {
+        e->diving = FALSE;
+        activeDivers--;
+    }
 
     if (e->kind == ENEMY_KIND_BIG)
     {
@@ -191,6 +262,12 @@ void enemies_update(void)
                 e->state = ENEMY_STATE_IN_FORMATION;
                 e->x = FIX16(e->slotX);
                 e->y = FIX16(e->slotY);
+
+                if (e->diving)
+                {
+                    e->diving = FALSE;
+                    activeDivers--;
+                }
             }
         }
         else if (e->state == ENEMY_STATE_IN_FORMATION)
@@ -224,12 +301,20 @@ void enemies_update(void)
                 {
                     e->diveCooldown--;
                 }
+                else if (activeDivers >= MAX_CONCURRENT_DIVERS)
+                {
+                    // Too many divers out already -- try again shortly
+                    // instead of stalling until this exact frame.
+                    e->diveCooldown = randomCooldown(30, 60);
+                }
                 else
                 {
                     s16 drift = (s16) (random() % (2 * DIVE_SPEED_X_MAX + 1)) - DIVE_SPEED_X_MAX;
                     e->vx = drift;
                     e->vy = DIVE_SPEED_Y;
                     e->state = ENEMY_STATE_DIVING_OUT;
+                    e->diving = TRUE;
+                    activeDivers++;
                 }
             }
         }
@@ -269,7 +354,7 @@ void enemies_update(void)
         {
             e->flashTimer--;
             if (e->flashTimer == 0)
-                SPR_setAnim(e->sprite, 0);
+                SPR_setVRAMTileIndex(e->sprite, normalTile[e->kind]);
         }
 
         SPR_setPosition(e->sprite, F16_toInt(e->x), F16_toInt(e->y));

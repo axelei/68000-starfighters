@@ -15,8 +15,8 @@
 static fix16 terrainScroll;
 static fix16 starfieldScroll;
 
-#define CLUMP_SPACING  8 // tile grid spacing between candidate clump anchors
-#define CLUMP_MAX_SIZE 3 // clumps are randomly 1x1 up to CLUMP_MAX_SIZE^2 tiles
+#define CLUMP_SPACING  16 // tile grid spacing between candidate clump anchors
+#define CLUMP_MAX_SIZE 7  // clumps are randomly 1x1 up to CLUMP_MAX_SIZE^2 tiles
 
 // Leaves most of the plane untouched (defaults to blank tile 0, which is
 // transparent and lets the BG_B starfield show through), scattering random-
@@ -74,10 +74,22 @@ static void fillStarfieldPlane(void)
 
 void terrain_init(void)
 {
-    VDP_setPlaneSize(PLANE_W_TILES, PLANE_H_TILES, TRUE);
+    // BG_A isn't exclusively ours -- the title screen's logo (title.c) is
+    // drawn on BG_A too, leaving real (non-blank) tilemap entries behind in
+    // the rows/columns it used. fillTerrainPlane() only touches its sparse
+    // clump cells (unlike fillStarfieldPlane(), which overwrites every BG_B
+    // cell), so without this explicit clear, leftover logo tilemap entries
+    // would linger and reference whatever tile pattern data now occupies
+    // those indices once the terrain tileset is loaded below -- showing up
+    // as garbled leftover logo shapes instead of the intended sparse chunks.
+    VDP_clearPlane(BG_A, TRUE);
 
-    VDP_loadTileSet(&terrain_tileset, TERRAIN_BASE_TILE, DMA);
-    VDP_loadTileSet(&starfield_tileset, STARFIELD_BASE_TILE, DMA);
+    // CPU transfer (not DMA): these loads happen well outside any vblank-
+    // aware loop, so there's no reason to depend on a queued DMA transfer
+    // being flushed later -- CPU makes the upload complete synchronously,
+    // right here.
+    VDP_loadTileSet(&terrain_tileset, TERRAIN_BASE_TILE, CPU);
+    VDP_loadTileSet(&starfield_tileset, STARFIELD_BASE_TILE, CPU);
 
     fillTerrainPlane();
     fillStarfieldPlane();

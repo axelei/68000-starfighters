@@ -270,8 +270,20 @@ def powerup_speed():
 
 
 def terrain_tiles():
-    # palette 3: terrain/starfield. 8x8 tiles, sheet is 4 tiles wide (32x8).
-    pal = [TRANSPARENT, (90, 70, 60), (130, 100, 80), (60, 45, 40)]
+    # palette 3: terrain AND starfield share this one hardware palette (only
+    # 4 exist total, all already spoken for -- see game.h). Only this image's
+    # PALETTE resource is ever loaded onto hardware (starfield_tiles.png has
+    # no PALETTE declaration of its own), so starfield's star colors are
+    # defined here too, at indices 4-5, alongside terrain's own colors at
+    # 1-3 -- even though no pixel in *this* image uses 4/5. starfield_tiles()
+    # below must use those same indices for its pixels to pick up the right
+    # colors instead of terrain's.
+    pal = [TRANSPARENT] * 16
+    pal[1] = (90, 70, 60)
+    pal[2] = (130, 100, 80)
+    pal[3] = (60, 45, 40)
+    pal[4] = (255, 255, 255)  # star bright (was starfield's own index 1)
+    pal[5] = (150, 170, 220)  # star dim (was starfield's own index 2)
     img = new_indexed((32, 8), pal)
     # tile 0: flat ground
     fill_rect(img, 0, 0, 8, 8, 1)
@@ -290,16 +302,23 @@ def terrain_tiles():
 
 
 def starfield_tiles():
-    pal = [TRANSPARENT, (255, 255, 255), (150, 170, 220)]
+    # Pixel indices 4/5 (not 1/2!) -- see terrain_tiles()'s comment. This
+    # image's own palette is never loaded onto hardware (no PALETTE
+    # resource references it), so it only needs to look right for local
+    # preview/inspection; what matters at runtime is that these pixel
+    # indices match terrain_tiles.png's palette slots.
+    pal = [TRANSPARENT] * 6
+    pal[4] = (255, 255, 255)
+    pal[5] = (150, 170, 220)
     img = new_indexed((24, 8), pal)
     # tile 0: empty space
     # (all index 0)
     # tile 1: single dim star
-    set_px(img, 8 + 3, 3, 2)
+    set_px(img, 8 + 3, 3, 5)
     # tile 2: couple bright stars
-    set_px(img, 16 + 2, 2, 1)
-    set_px(img, 16 + 5, 5, 2)
-    set_px(img, 16 + 1, 6, 2)
+    set_px(img, 16 + 2, 2, 4)
+    set_px(img, 16 + 5, 5, 5)
+    set_px(img, 16 + 1, 6, 5)
     return img
 
 

@@ -12,7 +12,7 @@ void powerups_init(void)
     for (u16 i = 0; i < MAX_POWERUPS; i++)
     {
         powerups[i].active = FALSE;
-        powerups[i].sprite = NULL;
+        // Sprite handle intentionally left alone -- see bullet.c pool_init.
     }
 }
 

@@ -17,12 +17,41 @@ typedef struct
 
 static Explosion explosions[MAX_EXPLOSIONS];
 
+// Every explosion plays the same 4-frame animation, so its tile graphics
+// are uploaded to VRAM exactly once here (one shared tile block per frame)
+// instead of once per active explosion -- SPR_addSprite's default behaviour
+// would otherwise give each of the up to MAX_EXPLOSIONS sprites its own
+// private VRAM copy of all 4 frames. Each instance just points its "VRAM
+// tile index" at the shared block for whichever frame it's currently on
+// (see SPR_setVRAMTileIndex calls below) rather than using SPR_setFrame,
+// which would try to re-upload tile data.
+#define EXPLOSION_TILE_BASE (TILE_USER_INDEX + 176)
+
+static u16 frameTile[EXPLOSION_FRAME_COUNT];
+static bool tilesLoaded = FALSE;
+
+static void loadSharedTiles(void)
+{
+    if (tilesLoaded)
+        return;
+
+    u16 totalTiles;
+    u16 **idx = SPR_loadAllFrames(&spr_explosion, EXPLOSION_TILE_BASE, &totalTiles);
+    for (u16 f = 0; f < EXPLOSION_FRAME_COUNT; f++)
+        frameTile[f] = idx[0][f];
+    MEM_free(idx);
+
+    tilesLoaded = TRUE;
+}
+
 void explosions_init(void)
 {
+    loadSharedTiles();
+
     for (u16 i = 0; i < MAX_EXPLOSIONS; i++)
     {
         explosions[i].active = FALSE;
-        explosions[i].sprite = NULL;
+        // Sprite handle intentionally left alone -- see bullet.c pool_init.
     }
 }
 
@@ -43,12 +72,14 @@ void explosion_spawnAtDelayed(s16 centerX, s16 centerY, u16 delay)
         s16 py = centerY - EXPLOSION_SPR_H / 2;
 
         if (e->sprite == NULL)
-            e->sprite = SPR_addSprite(&spr_explosion, px, py, TILE_ATTR(PAL_ENEMY, FALSE, FALSE, FALSE));
+            e->sprite = SPR_addSpriteEx(&spr_explosion, px, py,
+                                         TILE_ATTR_FULL(PAL_ENEMY, FALSE, FALSE, FALSE, frameTile[0]), 0);
         else
+        {
             SPR_setPosition(e->sprite, px, py);
+            SPR_setVRAMTileIndex(e->sprite, frameTile[0]);
+        }
 
-        SPR_setAnim(e->sprite, 0);
-        SPR_setFrame(e->sprite, 0);
         SPR_setVisibility(e->sprite, delay > 0 ? HIDDEN : VISIBLE);
         return;
     }
@@ -86,7 +117,7 @@ void explosions_update(void)
                 continue;
             }
 
-            SPR_setFrame(e->sprite, e->frameIndex);
+            SPR_setVRAMTileIndex(e->sprite, frameTile[e->frameIndex]);
             e->frameTimer = EXPLOSION_FRAME_HOLD;
         }
     }

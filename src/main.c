@@ -24,17 +24,30 @@ int main(bool hardReset)
     // would otherwise drag the score display up the screen along with the
     // terrain and visually mix it with terrain tiles behind it.
     VDP_setTextPlane(WINDOW);
-    VDP_setWindowVPos(FALSE, 28); // full screen height; only the H split varies (see score.c)
 
-    title_run();
+    // Deliberately never call VDP_setWindowVPos(): the VDP combines the
+    // window's H and V ranges with OR, not AND, so setting VPos to "full
+    // screen height" (as a previous version of this code did) made the
+    // window cover the ENTIRE screen at all times regardless of HPos,
+    // permanently hiding BG_A behind it (only BG_B showed through the
+    // window's blank/transparent gaps). Leaving VPos at its default (0,0,
+    // an always-false V condition) means only VDP_setWindowHPos (see
+    // score.c) decides where the window shows: a right-side column when
+    // HPos is column-restricted, or the whole screen when HPos spans all
+    // 40 columns (used for the full-screen game-over text).
 
-    terrain_init();
     sfx_init();
-
-    bool firstRun = TRUE;
 
     do
     {
+        // Title screen every time we (re)start -- draws the logo over BG_A
+        // and blocks until Start is pressed, then fades to black.
+        title_run();
+
+        // terrain_init() re-fills BG_A/BG_B from scratch, both to reset the
+        // scroll position for the new game and because title_run() just drew
+        // the logo over part of BG_A's tilemap.
+        terrain_init();
         bullets_init();
         enemies_init();
         powerups_init();
@@ -43,54 +56,66 @@ int main(bool hardReset)
         player_init();
         formation_init();
 
-        // Only the very first game scene fades in from the title screen's
-        // fade-out; subsequent restarts (after a game over) pop in instantly,
-        // same as before.
-        if (firstRun)
-        {
-            title_fadeInGame();
-            firstRun = FALSE;
-        }
+        title_fadeInGame();
 
-        while (!player_isGameOver())
+        bool gameOverShown = FALSE;
+        bool startReleased = FALSE; // debounce: ignore Start until it's been let go once
+
+        while (TRUE)
         {
             u16 joyState = JOY_readJoypad(JOY_1);
+            bool gameOver = player_isGameOver();
 
-            player_update(joyState);
+            // Once the player is out of lives, the scene keeps animating
+            // (enemies, terrain, explosions...) behind the "GAME OVER" text
+            // rather than freezing, until Start is pressed to return to the
+            // title screen.
+            if (!gameOver)
+                player_update(joyState);
+
             bullets_update();
             enemies_update();
             formation_update();
             terrain_update();
             powerups_update();
             explosions_update();
-            collisions_resolve();
+
+            if (!gameOver)
+                collisions_resolve();
+
             score_hud_update();
             sfx_update();
+
+            if (gameOver)
+            {
+                if (!gameOverShown)
+                {
+                    score_showGameOver();
+                    gameOverShown = TRUE;
+                    startReleased = !(joyState & BUTTON_START);
+                }
+                else if (!startReleased)
+                {
+                    if (!(joyState & BUTTON_START))
+                        startReleased = TRUE;
+                }
+                else if (joyState & BUTTON_START)
+                {
+                    break;
+                }
+            }
 
             SPR_update();
             SYS_doVBlankProcess();
         }
 
-        // Player just died -- hide whatever enemies/bullets/powerups were
-        // still on screen so they don't hang there, frozen, through the
-        // game-over prompt. SPR_update() must run once more here to flush
-        // the visibility change to hardware; the main loop's own call
-        // already ran for this frame before the while() condition was
-        // re-checked.
+        PAL_fadeOutAll(30, FALSE);
+
         enemies_hideAll();
         bullets_hideAll();
         powerups_hideAll();
         explosions_hideAll();
         SPR_update();
-
-        score_showGameOver();
-
-        // Wait for the player to release Start (if held from before death),
-        // then press it again to restart.
-        while (JOY_readJoypad(JOY_1) & BUTTON_START)
-            SYS_doVBlankProcess();
-        while (!(JOY_readJoypad(JOY_1) & BUTTON_START))
-            SYS_doVBlankProcess();
 
         VDP_clearTextArea(0, 0, 40, 28);
     } while (TRUE);

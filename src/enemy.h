@@ -36,6 +36,7 @@ typedef struct
     u16 flashTimer;    // frames remaining showing the white hit-flash sprite frame
     u16 diveCooldown;  // BEE/SPECIAL only: frames until eligible to dive again
     u16 fireCooldown;  // BIG only: frames until its next shot
+    bool diving;       // BEE/SPECIAL only: away from its slot for a dive (counts against MAX_CONCURRENT_DIVERS)
 } Enemy;
 
 extern Enemy enemies[MAX_ENEMIES];

@@ -12,9 +12,31 @@
 // 60 frames (1s) out + 60 frames (1s) in = 2s total, as requested.
 #define FADE_FRAMES 60
 
+// Fixed, dedicated tile range for the logo -- well clear of terrain.c's
+// TERRAIN_BASE_TILE.."+32" range. Loaded explicitly (rather than via
+// VDP_drawImage's auto-incrementing tile index) and with a CPU transfer
+// (rather than DMA) so this doesn't depend on a DMA queue slot being free
+// or on VDP_drawImage's internal tile bookkeeping across repeat title
+// screens.
+#define TITLE_BASE_TILE (TILE_USER_INDEX + 64)
+
 void title_run(void)
 {
-    VDP_drawImage(BG_A, &title_image, LOGO_TILE_X, LOGO_TILE_Y);
+    // BG_A isn't exclusively ours -- terrain.c leaves real (non-blank)
+    // tilemap entries on it from the previous game, which drawing the logo
+    // wouldn't otherwise overwrite outside its own footprint.
+    VDP_clearPlane(BG_A, TRUE);
+
+    VDP_drawImageEx(BG_A, &title_image, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, TITLE_BASE_TILE),
+                     LOGO_TILE_X, LOGO_TILE_Y, TRUE, FALSE);
+
+    // Draw directly on BG_A rather than through the usual WINDOW text plane:
+    // the WINDOW only actually shows where VDP_setWindowHPos/VPos say it
+    // should (see main.c), and at title time neither has been configured to
+    // anything but its default (zero-width) state, so text drawn to WINDOW
+    // here wouldn't be visible at all. BG_A isn't scrolling yet (that only
+    // starts once gameplay begins), so drawing text on it directly is safe.
+    VDP_setTextPlane(BG_A);
     VDP_drawText("PRESS START", PRESS_START_X, PRESS_START_Y);
 
     while (!(JOY_readJoypad(JOY_1) & BUTTON_START))
@@ -22,7 +44,8 @@ void title_run(void)
 
     PAL_fadeOutAll(FADE_FRAMES, FALSE);
 
-    VDP_clearTextArea(0, 0, 40, 28);
+    // Restore WINDOW as the text plane for score.c's HUD during gameplay.
+    VDP_setTextPlane(WINDOW);
 }
 
 void title_fadeInGame(void)

@@ -48,7 +48,7 @@ void score_init(void)
 
     if (!tilesetLoaded)
     {
-        VDP_loadTileSet(&hud_fill_tileset, HUD_FILL_TILE, DMA);
+        VDP_loadTileSet(&hud_fill_tileset, HUD_FILL_TILE, CPU);
         tilesetLoaded = TRUE;
     }
 
