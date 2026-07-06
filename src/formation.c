@@ -98,9 +98,9 @@ static void startWave(u16 index)
     announceTimer = WAVE_ANNOUNCE_FRAMES;
 
     // Vary the scrolling terrain/starfield over a long game, but only here,
-    // at wave boundaries -- see terrain_regenerateOffscreenBand() for why
-    // this can't just happen continuously during scroll.
-    terrain_regenerateOffscreenBand();
+    // at wave boundaries -- see terrain_requestRegen() for why this can't
+    // just happen continuously during scroll.
+    terrain_requestRegen();
 }
 
 void formation_init(void)

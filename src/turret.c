@@ -94,6 +94,18 @@ static u16 countActive(void)
     return count;
 }
 
+// True if some other active turret already claimed this clump -- without
+// this, two separate trySpawn() calls could both pick the same still-
+// approaching clump (it stays a valid candidate for several seconds while
+// it crosses CLUMP_APPROACH_PX), stacking two turrets on top of each other.
+static bool clumpTaken(const TerrainClump *c)
+{
+    for (u16 i = 0; i < MAX_TURRETS; i++)
+        if (turrets[i].active && turrets[i].clump == c)
+            return TRUE;
+    return FALSE;
+}
+
 // Finds a terrain clump that's about to scroll into view from the top and
 // isn't too close to the HUD panel to fit a turret, picking randomly among
 // whichever candidates qualify right now. Returns NULL if none do (the
@@ -107,6 +119,8 @@ static const TerrainClump *findApproachingClump(void)
     {
         const TerrainClump *c = &terrainClumps[i];
         if (c->tileW == 0 || c->tileH == 0) // empty anchor slot -- see terrain.h
+            continue;
+        if (clumpTaken(c))
             continue;
 
         s16 screenY = terrain_clumpScreenY(c);
@@ -148,6 +162,7 @@ static void trySpawn(void)
             continue;
 
         t->active = TRUE;
+        t->clump = clump;
         t->hp = HP_TURRET;
         t->fireCooldown = randomCooldown(FIRE_COOLDOWN_MIN, FIRE_COOLDOWN_RANGE);
         t->burstShotsLeft = 0;

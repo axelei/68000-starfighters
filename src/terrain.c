@@ -21,14 +21,24 @@ static fix16 starfieldScroll;
 #define CLUMP_SPACING  14 // tile grid spacing between candidate clump anchors
 #define CLUMP_MAX_SIZE 10 // clumps are randomly 1x1 up to CLUMP_MAX_SIZE^2 tiles
 
-// The plane is divided into fixed horizontal bands, each BAND_ROWS tile rows
-// tall, so a band can be rerolled on its own later without touching any
-// other part of the plane -- see terrain_update(). PLANE_H_TILES must divide
-// evenly by BAND_ROWS (independent of CLUMP_SPACING, which just governs
-// anchor spacing *within* a band).
-#define BAND_ROWS        16
-#define BANDS_PER_PLANE  (PLANE_H_TILES / BAND_ROWS) // 64/16 = 4
+// The plane is split into two fixed halves, each BAND_ROWS (=PLANE_H_TILES/2)
+// tile rows tall, so a half can be rerolled on its own without touching the
+// other -- see terrain_requestRegen()/terrain_update(). PLANE_H_TILES must be
+// even (independent of CLUMP_SPACING, which just governs anchor spacing
+// *within* a half).
+#define BAND_ROWS        (PLANE_H_TILES / 2)
+#define BANDS_PER_PLANE  2
 #define ANCHORS_PER_BAND ((PLANE_W_TILES + CLUMP_SPACING - 1) / CLUMP_SPACING)
+
+// Screen height in tile rows -- the visible window's size when checking
+// whether a half is currently fully off-screen (see halfIsOffscreen()).
+#define VIEW_ROWS (SCREEN_H / 8)
+
+// Set by terrain_requestRegen(); consumed by terrain_update() once a half
+// is confirmed fully off-screen (see halfIsOffscreen()) -- regenerating on
+// request immediately, without waiting for that, risked rewriting tiles the
+// player is currently looking at.
+static bool regenPending;
 
 // Fills (or refills) one band's worth of terrain clumps -- rows
 // [bandRow, bandRow + BAND_ROWS) -- scattering candidate clumps at sparse
@@ -139,6 +149,30 @@ void terrain_init(void)
 
     terrainScroll = 0;
     starfieldScroll = 0;
+    regenPending = FALSE;
+}
+
+// True if not one of the VIEW_ROWS rows currently on screen falls within
+// half-index `half`'s BAND_ROWS-tall range -- i.e. that half is entirely
+// off-screen right now and safe to rewrite. Checked row-by-row (rather than
+// worked out as a closed-form interval test) since VIEW_ROWS/BAND_ROWS are
+// small enough that this is cheap and there's no risk of getting the
+// wraparound arithmetic subtly wrong.
+static bool halfIsOffscreen(u16 half, s16 topRow)
+{
+    s16 halfStart = half * BAND_ROWS;
+    s16 halfEnd = halfStart + BAND_ROWS;
+
+    for (s16 i = 0; i < VIEW_ROWS; i++)
+    {
+        s16 row = (topRow + i) % PLANE_H_TILES;
+        if (row < 0)
+            row += PLANE_H_TILES;
+        if (row >= halfStart && row < halfEnd)
+            return FALSE;
+    }
+
+    return TRUE;
 }
 
 void terrain_update(void)
@@ -151,35 +185,37 @@ void terrain_update(void)
     // down towards the player, so we scroll in the opposite direction.
     VDP_setVerticalScroll(BG_A, -F16_toInt(terrainScroll));
     VDP_setVerticalScroll(BG_B, -F16_toInt(starfieldScroll));
+
+    if (regenPending)
+    {
+        s16 topRow = ((s32) F16_toInt(terrainScroll) / 8) % PLANE_H_TILES;
+        if (topRow < 0)
+            topRow += PLANE_H_TILES;
+
+        for (u16 half = 0; half < BANDS_PER_PLANE; half++)
+        {
+            if (halfIsOffscreen(half, topRow))
+            {
+                fillTerrainBand(half, half * BAND_ROWS);
+                fillStarfieldBand(half * BAND_ROWS);
+                regenPending = FALSE;
+                break;
+            }
+        }
+    }
 }
 
-void terrain_regenerateOffscreenBand(void)
+void terrain_requestRegen(void)
 {
-    // Rerolling a band costs a few hundred VDP_setTileMapXY calls (up to
-    // PLANE_W_TILES=64 starfield tiles/row x BAND_ROWS=16 rows, plus terrain
-    // clumps), which takes long enough that doing it every time the scroll
-    // crosses a band boundary (as an earlier version of this did) was
-    // visibly janky -- a multi-frame hitch every few seconds, however
-    // carefully the target band was chosen to stay off-screen. Called only
-    // at wave-change boundaries instead (see formation.c's startWave()), so
-    // it happens rarely and lands during the "WAVE N" announcement pause
-    // rather than live combat.
-    //
-    // Picks the band that's most recently scrolled fully past the bottom of
-    // the screen -- the one immediately behind (lower plane-row index than)
-    // whichever band currently sits at the top edge. BAND_ROWS=16 covers
-    // more than one full band beyond SCREEN_H_TILES=28's reach in every
-    // case (verified by exhaustively checking all four band/offset
-    // combinations), so this band is guaranteed to already be off-screen and
-    // won't scroll back into view for nearly a full lap.
-    s16 topRow = ((s32) F16_toInt(terrainScroll) / 8) % PLANE_H_TILES;
-    if (topRow < 0)
-        topRow += PLANE_H_TILES;
-    s16 bandIndex = topRow / BAND_ROWS;
-
-    u16 target = (bandIndex + BANDS_PER_PLANE - 1) % BANDS_PER_PLANE;
-    fillTerrainBand(target, target * BAND_ROWS);
-    fillStarfieldBand(target * BAND_ROWS);
+    // Rerolling a half costs several hundred VDP_setTileMapXY calls (up to
+    // PLANE_W_TILES=64 starfield tiles/row x BAND_ROWS rows, plus terrain
+    // clumps) -- cheap as a one-off, but visibly janky if it lands while the
+    // player can actually see the half being rewritten. So this doesn't
+    // regenerate anything itself: it just flags the request, and
+    // terrain_update() carries it out on whichever later frame first finds
+    // one of the two halves entirely off-screen (see halfIsOffscreen()) --
+    // which happens naturally within at most about half a lap of scrolling.
+    regenPending = TRUE;
 }
 
 s16 terrain_clumpScreenY(const TerrainClump *clump)

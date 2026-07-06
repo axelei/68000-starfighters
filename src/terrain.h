@@ -7,19 +7,18 @@
 // taller than the screen (SCREEN_H) so its content cycles as it scrolls. 512
 // (64 tiles) is the VDP's maximum plane height once the width is set to 64
 // tiles (required since the screen itself is 40 tiles wide) -- see
-// VDP_setPlaneSize()'s width/height coupling. terrain.c uses the resulting
-// slack (64 tile rows of loop vs. ~28 tiles of screen) to reroll whichever
-// band has most recently scrolled fully out of view, so the terrain/
-// starfield keep varying instead of repeating the same fixed pattern every
-// lap -- see fillTerrainBand()/fillStarfieldBand() in terrain_update().
+// VDP_setPlaneSize()'s width/height coupling. terrain.c splits this into two
+// halves and rerolls whichever one is currently entirely off-screen, so the
+// terrain/starfield keep varying instead of repeating the same fixed pattern
+// every lap -- see terrain_requestRegen().
 #define TERRAIN_PLANE_H_PX 512
 
-// One slot per (band, anchor) pair -- see BANDS_PER_PLANE/ANCHORS_PER_BAND in
-// terrain.c (512/8 / 16 rows-per-band = 4 bands x 5 anchors/row = 20). Unlike
-// the old flat "append as generated" list, every slot always exists (even if
-// its anchor rolled empty, marked by tileW == 0) so each band owns a fixed,
-// never-changing index range that can be safely rerolled in place later.
-#define MAX_TERRAIN_CLUMPS 20
+// One slot per (half, anchor) pair -- see BANDS_PER_PLANE/ANCHORS_PER_BAND in
+// terrain.c (2 halves x 5 anchors/row = 10). Unlike a flat "append as
+// generated" list, every slot always exists (even if its anchor rolled
+// empty, marked by tileW == 0) so each half owns a fixed, never-changing
+// index range that can be safely rerolled in place later.
+#define MAX_TERRAIN_CLUMPS 10
 
 // One scattered terrain clump's footprint, in plane tile coordinates (see
 // fillTerrainPlane() in terrain.c). Used by turret.c to place turrets on top
@@ -44,12 +43,12 @@ void terrain_init(void);
 // Advances both scroll offsets. Call once per frame.
 void terrain_update(void);
 
-// Rerolls one off-screen band of terrain/starfield so the scenery varies
-// over a long play session instead of repeating the same fixed loop
-// forever. Call sparingly (see formation.c's startWave()) -- rerolling a
-// band is a few hundred VDP writes, cheap individually but noticeable if
-// done too often.
-void terrain_regenerateOffscreenBand(void);
+// Requests that terrain/starfield scenery be varied, so a long play session
+// doesn't just repeat the same fixed loop forever. Doesn't regenerate
+// anything immediately -- see terrain_update() -- so it's safe (and
+// intended) to call this at any time, e.g. once per wave change (see
+// formation.c's startWave()); it won't visibly disturb what's on screen.
+void terrain_requestRegen(void);
 
 // Current on-screen Y for the top of a clump, given the current scroll
 // position. Since the plane loops (TERRAIN_PLANE_H_PX > SCREEN_H), this can

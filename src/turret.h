@@ -2,6 +2,7 @@
 #define TURRET_H
 
 #include "game.h"
+#include "terrain.h"
 
 // At most this many ground turrets can be active on screen at once.
 #define MAX_TURRETS 2
@@ -19,6 +20,10 @@ typedef struct
     u16 shootAnimTimer;   // frames remaining showing the "firing" sprite
     u16 flashTimer;       // frames remaining showing the white hit-flash sprite
     bool hasPowerup;      // drops a powerup on death instead of nothing
+    // Which clump this turret spawned on -- only used to keep
+    // findApproachingClump() (turret.c) from picking the same clump for a
+    // second turret while this one is still riding it in.
+    const TerrainClump *clump;
 } Turret;
 
 extern Turret turrets[MAX_TURRETS];
