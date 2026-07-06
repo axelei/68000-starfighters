@@ -2,21 +2,25 @@
 #include "resources.h"
 
 #define PLANE_W_TILES 64
-#define PLANE_H_TILES 32
+#define PLANE_H_TILES 32 // TERRAIN_PLANE_H_PX (terrain.h) / 8
+
+TerrainClump terrainClumps[MAX_TERRAIN_CLUMPS];
+u16 terrainClumpCount;
 
 #define TERRAIN_BASE_TILE   TILE_USER_INDEX
 #define STARFIELD_BASE_TILE (TILE_USER_INDEX + 16)
 
-// Scroll speeds, fixed-point pixels/frame. Terrain scrolls just a bit
-// faster than the starfield, for a subtle parallax effect.
+// Scroll speed, fixed-point pixels/frame. Terrain scrolls just a bit
+// faster than the starfield, for a subtle parallax effect. (TERRAIN_SPEED
+// itself lives in game.h -- turret.c needs it too, to travel in lockstep
+// with the terrain clumps it's attached to.)
 #define STARFIELD_SPEED FIX16(0.4)
-#define TERRAIN_SPEED   FIX16(0.55)
 
 static fix16 terrainScroll;
 static fix16 starfieldScroll;
 
-#define CLUMP_SPACING  16 // tile grid spacing between candidate clump anchors
-#define CLUMP_MAX_SIZE 7  // clumps are randomly 1x1 up to CLUMP_MAX_SIZE^2 tiles
+#define CLUMP_SPACING  14 // tile grid spacing between candidate clump anchors
+#define CLUMP_MAX_SIZE 10 // clumps are randomly 1x1 up to CLUMP_MAX_SIZE^2 tiles
 
 // Leaves most of the plane untouched (defaults to blank tile 0, which is
 // transparent and lets the BG_B starfield show through), scattering random-
@@ -24,6 +28,8 @@ static fix16 starfieldScroll;
 // covering the whole playfield in solid ground or using uniform blocks.
 static void fillTerrainPlane(void)
 {
+    terrainClumpCount = 0;
+
     for (u16 cy = 0; cy < PLANE_H_TILES; cy += CLUMP_SPACING)
     {
         for (u16 cx = 0; cx < PLANE_W_TILES; cx += CLUMP_SPACING)
@@ -35,6 +41,17 @@ static void fillTerrainPlane(void)
             u16 h = 1 + (random() % CLUMP_MAX_SIZE);
             u16 ox = cx + (random() % (CLUMP_SPACING - w));
             u16 oy = cy + (random() % (CLUMP_SPACING - h));
+
+            // Recorded so turret.c can place turrets on top of an actual
+            // clump instead of at an arbitrary position.
+            if (terrainClumpCount < MAX_TERRAIN_CLUMPS)
+            {
+                TerrainClump *clump = &terrainClumps[terrainClumpCount++];
+                clump->tileX = ox;
+                clump->tileY = oy;
+                clump->tileW = w;
+                clump->tileH = h;
+            }
 
             for (u16 dy = 0; dy < h; dy++)
             {
@@ -108,4 +125,20 @@ void terrain_update(void)
     // down towards the player, so we scroll in the opposite direction.
     VDP_setVerticalScroll(BG_A, -F16_toInt(terrainScroll));
     VDP_setVerticalScroll(BG_B, -F16_toInt(starfieldScroll));
+}
+
+s16 terrain_clumpScreenY(const TerrainClump *clump)
+{
+    // The plane loops every TERRAIN_PLANE_H_PX pixels of scroll (matching
+    // the sign convention in terrain_update(): the world moves down the
+    // screen as terrainScroll increases). Wrap into [0, TERRAIN_PLANE_H_PX),
+    // then treat the bottom portion of that range as "still above the
+    // screen, about to enter" (a negative Y) rather than a large positive
+    // one, so callers can just check "is this about to scroll into view".
+    s32 raw = ((s32) clump->tileY * 8 + F16_toInt(terrainScroll)) % TERRAIN_PLANE_H_PX;
+    if (raw < 0)
+        raw += TERRAIN_PLANE_H_PX;
+    if (raw > SCREEN_H)
+        raw -= TERRAIN_PLANE_H_PX;
+    return (s16) raw;
 }

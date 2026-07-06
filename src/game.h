@@ -30,6 +30,11 @@
 #define MAX_ENEMIES        32
 #define MAX_POWERUPS        4
 
+// Terrain scroll speed, fixed-point pixels/frame (see terrain.c). Shared
+// with turret.c so ground turrets travel down the screen in lockstep with
+// the terrain clumps they're attached to.
+#define TERRAIN_SPEED FIX16(0.55)
+
 typedef struct
 {
     s16 x;

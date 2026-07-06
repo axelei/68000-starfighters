@@ -27,6 +27,12 @@ void title_run(void)
     // wouldn't otherwise overwrite outside its own footprint.
     VDP_clearPlane(BG_A, TRUE);
 
+    // terrain_update() left BG_A's vertical scroll wherever the previous
+    // game's terrain scrolled to; without resetting it, the logo/text are
+    // still written at the correct *tile* coordinates but appear shifted
+    // (and possibly wrapped) on screen by that leftover scroll amount.
+    VDP_setVerticalScroll(BG_A, 0);
+
     VDP_drawImageEx(BG_A, &title_image, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, TITLE_BASE_TILE),
                      LOGO_TILE_X, LOGO_TILE_Y, TRUE, FALSE);
 
@@ -39,6 +45,13 @@ void title_run(void)
     VDP_setTextPlane(BG_A);
     VDP_drawText("PRESS START", PRESS_START_X, PRESS_START_Y);
 
+    // Debounce: the Start press that just dismissed the game-over screen
+    // (see main.c) may still be physically held here -- without waiting for
+    // a release first, that same held press would satisfy this wait
+    // instantly, skipping the title screen entirely (a single-frame flash
+    // straight through to fade-out and back into a new game).
+    while (JOY_readJoypad(JOY_1) & BUTTON_START)
+        SYS_doVBlankProcess();
     while (!(JOY_readJoypad(JOY_1) & BUTTON_START))
         SYS_doVBlankProcess();
 

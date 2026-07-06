@@ -101,6 +101,27 @@ void enemies_init(void)
     activeDivers = 0;
 }
 
+u16 enemies_countSmall(void)
+{
+    u16 count = 0;
+    for (u16 i = 0; i < MAX_ENEMIES; i++)
+    {
+        const Enemy *e = &enemies[i];
+        if (e->active && (e->kind == ENEMY_KIND_BEE || e->kind == ENEMY_KIND_SPECIAL))
+            count++;
+    }
+    return count;
+}
+
+u16 enemies_countActive(void)
+{
+    u16 count = 0;
+    for (u16 i = 0; i < MAX_ENEMIES; i++)
+        if (enemies[i].active)
+            count++;
+    return count;
+}
+
 static const SpriteDefinition *spriteDefForKind(EnemyKind kind)
 {
     switch (kind)

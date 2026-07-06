@@ -1,0 +1,93 @@
+# 68000 Starfighters -- wave formation definitions.
+#
+# Human-editable source of truth for enemy waves. Parsed by
+# generate_waves.py into src/waves_generated.h (compiled directly into the
+# ROM) -- the Genesis has no runtime filesystem, so this file can't be read
+# by the game itself; re-run the generator after editing it:
+#   python generate_waves.py
+#
+# Fields per "wave N" block:
+#   big <count>          number of BIG enemies in the back row (0-4)
+#   grid <rows> <cols>   small-enemy grid dimensions
+#   special <row> <col>  marks one grid cell (0-indexed) as a
+#                        powerup-dropping SPECIAL enemy instead of a plain
+#                        BEE; repeatable, any number per wave
+#
+# (rows*cols + big) must not exceed MAX_ENEMIES (32, see game.h). Waves are
+# played in order and then loop back to wave 1, increasing the "waves
+# cleared" counter forever.
+
+wave 1
+big 1
+grid 3 5
+special 1 2
+
+wave 2
+big 2
+grid 3 6
+special 0 1
+special 2 4
+
+wave 3
+big 2
+grid 4 5
+special 0 0
+special 1 4
+special 3 2
+
+wave 4
+big 3
+grid 4 5
+special 0 2
+special 2 0
+special 2 4
+special 3 2
+
+wave 5
+big 3
+grid 4 6
+special 0 1
+special 2 4
+
+wave 6
+big 3
+grid 4 6
+special 0 0
+special 0 5
+special 2 2
+special 3 4
+
+wave 7
+big 4
+grid 4 5
+special 1 0
+special 1 4
+special 3 2
+
+wave 8
+big 4
+grid 3 6
+special 0 0
+special 0 3
+special 0 5
+special 2 1
+special 2 4
+
+wave 9
+big 4
+grid 4 6
+special 0 0
+special 0 3
+special 1 5
+special 2 0
+special 3 2
+
+wave 10
+big 4
+grid 4 6
+special 0 0
+special 0 2
+special 0 4
+special 1 1
+special 2 3
+special 3 5

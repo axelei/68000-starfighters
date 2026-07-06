@@ -6,6 +6,7 @@
 
 void score_init(void);
 void score_addKill(EnemyKind kind);
+void score_addTurretKill(void);
 void score_hud_update(void);
 u32 score_getValue(void);
 

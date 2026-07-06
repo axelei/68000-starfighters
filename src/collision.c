@@ -2,6 +2,7 @@
 #include "player.h"
 #include "bullet.h"
 #include "enemy.h"
+#include "turret.h"
 #include "powerup.h"
 
 #define BULLET_DAMAGE 1
@@ -24,6 +25,7 @@ static void resolvePlayerBulletsVsEnemies(void)
             continue;
 
         AABB bbox = bullet_getBounds(b);
+        bool hit = FALSE;
 
         for (u16 ei = 0; ei < MAX_ENEMIES; ei++)
         {
@@ -33,11 +35,31 @@ static void resolvePlayerBulletsVsEnemies(void)
 
             if (aabb_overlaps(bbox, enemy_getBounds(e)))
             {
-                bullet_deactivate(b);
                 enemy_hit(e, BULLET_DAMAGE);
+                hit = TRUE;
                 break;
             }
         }
+
+        if (!hit)
+        {
+            for (u16 ti = 0; ti < MAX_TURRETS; ti++)
+            {
+                Turret *t = &turrets[ti];
+                if (!t->active)
+                    continue;
+
+                if (aabb_overlaps(bbox, turret_getBounds(t)))
+                {
+                    turret_hit(t, BULLET_DAMAGE);
+                    hit = TRUE;
+                    break;
+                }
+            }
+        }
+
+        if (hit)
+            bullet_deactivate(b);
     }
 }
 
@@ -69,6 +91,24 @@ static void resolveEnemyThreatsVsPlayer(void)
             continue;
 
         if (aabb_overlaps(pbox, enemy_getBounds(e)))
+        {
+            // Small enemies are destroyed by the collision too, not just
+            // the player -- a ramming BEE/SPECIAL doesn't survive the hit.
+            // BIG enemies are too tough to be taken out this way.
+            if (e->kind == ENEMY_KIND_BEE || e->kind == ENEMY_KIND_SPECIAL)
+                enemy_kill(e);
+            player_kill();
+            return;
+        }
+    }
+
+    for (u16 ti = 0; ti < MAX_TURRETS; ti++)
+    {
+        Turret *t = &turrets[ti];
+        if (!t->active)
+            continue;
+
+        if (aabb_overlaps(pbox, turret_getBounds(t)))
         {
             player_kill();
             return;

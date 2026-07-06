@@ -1,5 +1,6 @@
 #include "formation.h"
 #include "enemy.h"
+#include "waves_generated.h"
 
 // Playfield bounds an entering enemy is allowed to travel through -- must
 // never cross into the HUD panel (see game.h), so entrances swoop in from
@@ -7,25 +8,26 @@
 #define FIELD_LEFT  PLAY_AREA_X_MIN
 #define FIELD_RIGHT (HUD_PANEL_X_PX - 8)
 
-// Back row of large, tanky enemies.
-#define BIG_ROW_Y     16
-#define BIG_COUNT     3
-
-// Main grid of small enemies, denser than a classic 3x5 Galaga wave.
-#define GRID_ROWS       4
-#define GRID_COLS       6
-#define GRID_START_Y    56
-#define GRID_SPACING_Y  18
+#define BIG_ROW_Y      16
+#define GRID_START_Y   56
+#define GRID_SPACING_Y 18
 
 #define SPAWN_STAGGER_FRAMES 5
 #define ENTRANCE_SIDE_OFFSET 30 // how far off its slot an entrance starts, for a slight swoop
 
-// Slots (row*GRID_COLS + col) that spawn a "special" (powerup-dropping)
-// enemy instead of a basic one. Milestone 2 will replace this single static
-// wave with a table of WaveScripts covering multiple layouts.
-static bool isSpecialSlot(u16 row, u16 col)
+// Pause between a wave being fully cleared and the next one swooping in.
+#define WAVE_CLEAR_DELAY 90 // 1.5s at 60fps
+
+static u16 waveIndex;       // which WaveDef (mod WAVE_COUNT) is currently in play
+static u16 wavesCleared;
+static u16 clearDelayTimer; // >0 while waiting to spawn the next wave
+
+static bool isSpecialSlot(const WaveDef *wave, u16 row, u16 col)
 {
-    return (row == 0 && col == 1) || (row == 2 && col == 4);
+    for (u16 i = 0; i < wave->specialCount; i++)
+        if (wave->specialRow[i] == row && wave->specialCol[i] == col)
+            return TRUE;
+    return FALSE;
 }
 
 static void spawnAtSlot(EnemyKind kind, s16 slotX, s16 slotY, u16 index)
@@ -42,40 +44,72 @@ static void spawnAtSlot(EnemyKind kind, s16 slotX, s16 slotY, u16 index)
     enemy_spawn(kind, startX, startY, slotX, slotY, index * SPAWN_STAGGER_FRAMES);
 }
 
-void formation_init(void)
+static void spawnWave(u16 index)
 {
-    u16 index = 0;
+    const WaveDef *wave = &waves[index % WAVE_COUNT];
+    u16 spawnIndex = 0;
 
-    // Big enemies spread evenly across the playfield width.
-    u16 bigW = enemy_widthForKind(ENEMY_KIND_BIG);
-    u16 bigSpacingX = (FIELD_RIGHT - FIELD_LEFT - bigW) / (BIG_COUNT - 1);
-    for (u16 i = 0; i < BIG_COUNT; i++)
+    if (wave->bigCount > 0)
     {
-        s16 slotX = FIELD_LEFT + i * bigSpacingX;
-        spawnAtSlot(ENEMY_KIND_BIG, slotX, BIG_ROW_Y, index);
-        index++;
+        u16 bigW = enemy_widthForKind(ENEMY_KIND_BIG);
+        u16 bigSpacingX = (wave->bigCount > 1) ? (FIELD_RIGHT - FIELD_LEFT - bigW) / (wave->bigCount - 1) : 0;
+
+        for (u16 i = 0; i < wave->bigCount; i++)
+        {
+            s16 slotX = (wave->bigCount > 1)
+                ? FIELD_LEFT + i * bigSpacingX
+                : (FIELD_LEFT + FIELD_RIGHT - bigW) / 2;
+            spawnAtSlot(ENEMY_KIND_BIG, slotX, BIG_ROW_Y, spawnIndex);
+            spawnIndex++;
+        }
     }
 
-    // Small enemy grid, below the big row.
-    u16 gridSpacingX = (FIELD_RIGHT - FIELD_LEFT - 16) / (GRID_COLS - 1);
-    for (u16 row = 0; row < GRID_ROWS; row++)
+    u16 gridSpacingX = (wave->gridCols > 1) ? (FIELD_RIGHT - FIELD_LEFT - 16) / (wave->gridCols - 1) : 0;
+    for (u16 row = 0; row < wave->gridRows; row++)
     {
-        for (u16 col = 0; col < GRID_COLS; col++)
+        for (u16 col = 0; col < wave->gridCols; col++)
         {
-            s16 slotX = FIELD_LEFT + col * gridSpacingX;
+            s16 slotX = (wave->gridCols > 1)
+                ? FIELD_LEFT + col * gridSpacingX
+                : (FIELD_LEFT + FIELD_RIGHT - 16) / 2;
             s16 slotY = GRID_START_Y + row * GRID_SPACING_Y;
 
-            EnemyKind kind = isSpecialSlot(row, col) ? ENEMY_KIND_SPECIAL : ENEMY_KIND_BEE;
-            spawnAtSlot(kind, slotX, slotY, index);
-            index++;
+            EnemyKind kind = isSpecialSlot(wave, row, col) ? ENEMY_KIND_SPECIAL : ENEMY_KIND_BEE;
+            spawnAtSlot(kind, slotX, slotY, spawnIndex);
+            spawnIndex++;
         }
     }
 }
 
+void formation_init(void)
+{
+    waveIndex = 0;
+    wavesCleared = 0;
+    clearDelayTimer = 0;
+    spawnWave(waveIndex);
+}
+
 void formation_update(void)
 {
-    // Milestone 1: entrance + hold-in-formation is handled entirely by
-    // enemy_spawn()/enemies_update(). Milestone 2 adds per-wave scripted
-    // "diving" attacks triggered from here (e.g. periodically pick an
-    // in-formation enemy and switch it to a DIVING state/path).
+    if (clearDelayTimer > 0)
+    {
+        clearDelayTimer--;
+        if (clearDelayTimer == 0)
+        {
+            waveIndex++;
+            spawnWave(waveIndex);
+        }
+        return;
+    }
+
+    if (enemies_countActive() == 0)
+    {
+        wavesCleared++;
+        clearDelayTimer = WAVE_CLEAR_DELAY;
+    }
+}
+
+u16 formation_wavesCleared(void)
+{
+    return wavesCleared;
 }

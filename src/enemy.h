@@ -44,6 +44,14 @@ extern Enemy enemies[MAX_ENEMIES];
 void enemies_init(void);
 void enemies_update(void);
 
+// Number of active BEE/SPECIAL ("small") enemies -- turrets (see turret.c)
+// only spawn once this reaches 0.
+u16 enemies_countSmall(void);
+
+// Number of active enemies of any kind -- formation.c uses this to detect
+// when a wave has been fully cleared.
+u16 enemies_countActive(void);
+
 // Hides and deactivates every active enemy without releasing its sprite,
 // awarding no score/dropping no powerup (called on player death, so the
 // formation doesn't hang frozen on screen through the game-over prompt).

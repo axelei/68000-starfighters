@@ -8,6 +8,7 @@
 #include "terrain.h"
 #include "powerup.h"
 #include "explosion.h"
+#include "turret.h"
 #include "collision.h"
 #include "score.h"
 #include "sfx.h"
@@ -52,6 +53,7 @@ int main(bool hardReset)
         enemies_init();
         powerups_init();
         explosions_init();
+        turrets_init();
         score_init();
         player_init();
         formation_init();
@@ -79,6 +81,7 @@ int main(bool hardReset)
             terrain_update();
             powerups_update();
             explosions_update();
+            turrets_update();
 
             if (!gameOver)
                 collisions_resolve();
@@ -115,6 +118,7 @@ int main(bool hardReset)
         bullets_hideAll();
         powerups_hideAll();
         explosions_hideAll();
+        turrets_hideAll();
         SPR_update();
 
         VDP_clearTextArea(0, 0, 40, 28);

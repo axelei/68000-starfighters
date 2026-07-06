@@ -25,6 +25,11 @@ SPRITE spr_bullet_enemy   "gfx/bullet_enemy.png"   1 1 BEST
 SPRITE spr_powerup_spread "gfx/powerup_spread.png" 2 2 BEST
 SPRITE spr_powerup_speed  "gfx/powerup_speed.png"  2 2 BEST
 
+// Ground turret (see turret.c); terrain-attached, so it's drawn with
+// PAL_TERRA. No PALETTE entry -- it reuses palette_terra's already-loaded
+// colors (indices 6-8, see generate_placeholders.py's terrain_tiles()).
+SPRITE spr_turret         "gfx/turret.png"         2 2 BEST
+
 // -- title screen (see title.c). Bundles its own palette (loaded onto PAL0
 // when drawn) -- not one of the 4 shared gameplay hardware palettes.
 IMAGE title_image "gfx/title.png"

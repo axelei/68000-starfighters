@@ -9,6 +9,14 @@ PlayerState player;
 #define PLAYER_SPR_W 16
 #define PLAYER_SPR_H 16
 
+// Collision box is a smaller square centered inside the sprite rather than
+// the full 16x16 tile area, so near-misses around the ship's edges (mostly
+// transparent pixels/engine glow, not solid hull) don't count as hits.
+#define HITBOX_W 8
+#define HITBOX_H 8
+#define HITBOX_OFFSET_X ((PLAYER_SPR_W - HITBOX_W) / 2)
+#define HITBOX_OFFSET_Y ((PLAYER_SPR_H - HITBOX_H) / 2)
+
 #define BASE_SPEED       FIX16(1.5)
 #define SPEED_BOOST_MUL  FIX16(1.6)
 #define FIRE_COOLDOWN     8
@@ -143,7 +151,7 @@ void player_update(u16 joyState)
 
 AABB player_getBounds(void)
 {
-    AABB box = {F16_toInt(player.x), F16_toInt(player.y), PLAYER_SPR_W, PLAYER_SPR_H};
+    AABB box = {F16_toInt(player.x) + HITBOX_OFFSET_X, F16_toInt(player.y) + HITBOX_OFFSET_Y, HITBOX_W, HITBOX_H};
     return box;
 }
 

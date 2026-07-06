@@ -9,6 +9,9 @@ explicit palette. Index 0 is always transparent black (SGDK convention for
 sprite transparency).
 """
 
+import os
+import subprocess
+
 from PIL import Image, ImageDraw
 
 TRANSPARENT = (0, 0, 0)
@@ -278,12 +281,18 @@ def terrain_tiles():
     # 1-3 -- even though no pixel in *this* image uses 4/5. starfield_tiles()
     # below must use those same indices for its pixels to pick up the right
     # colors instead of terrain's.
+    # Indices 6-8 are turret.c's ground-turret colors (see turret()) --
+    # drawn with this same palette since it's a terrain-attached element,
+    # not a formation enemy.
     pal = [TRANSPARENT] * 16
     pal[1] = (90, 70, 60)
     pal[2] = (130, 100, 80)
     pal[3] = (60, 45, 40)
     pal[4] = (255, 255, 255)  # star bright (was starfield's own index 1)
     pal[5] = (150, 170, 220)  # star dim (was starfield's own index 2)
+    pal[6] = (90, 100, 90)    # turret body
+    pal[7] = (50, 55, 50)     # turret barrel
+    pal[8] = (255, 230, 120)  # turret muzzle flash
     img = new_indexed((32, 8), pal)
     # tile 0: flat ground
     fill_rect(img, 0, 0, 8, 8, 1)
@@ -322,6 +331,50 @@ def starfield_tiles():
     return img
 
 
+def turret():
+    # Ground turret (see turret.c): a terrain-attached element rather than
+    # a formation enemy, so it's drawn with palette_terra's colors (indices
+    # 6-8, see terrain_tiles()) instead of palette_enemy's. 3-row sheet, one
+    # row per single-frame animation (idle / firing / hit-flash), same
+    # convention as enemy_bee() etc -- selected at runtime via a shared VRAM
+    # tile index (see turret.c), not SPR_setAnim. The flash frame reuses
+    # index 4 (star bright white, already in this shared palette) rather
+    # than needing yet another dedicated color.
+    w = h = 16
+    pal = [TRANSPARENT] * 16
+    pal[4] = (255, 255, 255)  # star bright / turret hit-flash (see terrain_tiles())
+    pal[6] = (90, 100, 90)
+    pal[7] = (50, 55, 50)
+    pal[8] = (255, 230, 120)
+
+    def draw(img, firing):
+        fill_rect(img, 2, 8, 14, 16, 6)   # base
+        fill_rect(img, 6, 2, 10, 12, 7)   # barrel, pointing down at the player
+        if firing:
+            fill_rect(img, 4, 10, 12, 13, 8)  # muzzle flash
+
+    idle = new_indexed((w, h), pal)
+    draw(idle, False)
+
+    firing = new_indexed((w, h), pal)
+    draw(firing, True)
+
+    flash = new_indexed((w, h), pal)
+    draw(flash, False)
+    for y in range(h):
+        for x in range(w):
+            if flash.getpixel((x, y)) != 0:
+                set_px(flash, x, y, 4)
+
+    combined = new_indexed((w, h * 3), pal)
+    for frame_idx, frame in enumerate((idle, firing, flash)):
+        for y in range(h):
+            for x in range(w):
+                set_px(combined, x, y + frame_idx * h, frame.getpixel((x, y)))
+
+    return combined
+
+
 def hud_fill():
     # A single fully-opaque tile used to back the HUD side panel so the
     # scrolling terrain/starfield and any sprites transiting behind it don't
@@ -349,11 +402,35 @@ GENERATORS = {
     "powerup_speed.png": powerup_speed,
     "terrain_tiles.png": terrain_tiles,
     "starfield_tiles.png": starfield_tiles,
+    "turret.png": turret,
     "hud_fill.png": hud_fill,
 }
 
+def git_is_dirty(path):
+    """True if `path` is untracked or has uncommitted changes (staged or
+    not) -- i.e. regenerating it now would silently destroy something not
+    yet safely recorded in git history."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--", path],
+            capture_output=True, text=True, check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        # Not a git repo (or git unavailable) -- nothing to protect against.
+        return False
+    return bool(result.stdout.strip())
+
+
 if __name__ == "__main__":
+    import sys
+
+    force = "--force" in sys.argv[1:]
+
     for filename, gen in GENERATORS.items():
+        if not force and os.path.exists(filename) and git_is_dirty(filename):
+            print(f"skipped {filename}: uncommitted changes -- commit/discard them or pass --force to overwrite")
+            continue
+
         img = gen()
         img.save(filename)
         print(f"wrote {filename} ({img.size[0]}x{img.size[1]})")
