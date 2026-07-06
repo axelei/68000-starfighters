@@ -17,6 +17,13 @@ PlayerState player;
 #define HITBOX_OFFSET_X ((PLAYER_SPR_W - HITBOX_W) / 2)
 #define HITBOX_OFFSET_Y ((PLAYER_SPR_H - HITBOX_H) / 2)
 
+// Rows in spr_player's sheet (see generate_placeholders.py's player_ship())
+// -- a single instance, so plain SPR_setAnim (auto tile upload) is fine, no
+// need for the shared-VRAM-tile trick the many-instance enemies/bullets use.
+#define ANIM_NEUTRAL    0
+#define ANIM_LEAN_LEFT  1
+#define ANIM_LEAN_RIGHT 2
+
 #define BASE_SPEED       FIX16(1.5)
 #define SPEED_BOOST_MUL  FIX16(1.6)
 #define FIRE_COOLDOWN     8
@@ -42,6 +49,7 @@ static void respawn(void)
 
     SPR_setPosition(player.sprite, F16_toInt(player.x), F16_toInt(player.y));
     SPR_setVisibility(player.sprite, VISIBLE);
+    SPR_setAnim(player.sprite, ANIM_NEUTRAL);
 }
 
 void player_init(void)
@@ -106,6 +114,16 @@ void player_applyPowerup(PowerupType type)
     sfx_play_powerup();
 }
 
+static void updateLeanAnim(u16 joyState)
+{
+    if (joyState & BUTTON_LEFT)
+        SPR_setAnim(player.sprite, ANIM_LEAN_LEFT);
+    else if (joyState & BUTTON_RIGHT)
+        SPR_setAnim(player.sprite, ANIM_LEAN_RIGHT);
+    else
+        SPR_setAnim(player.sprite, ANIM_NEUTRAL);
+}
+
 static void updateInvulnerability(void)
 {
     if (player.invulnTimer == 0)
@@ -145,6 +163,7 @@ void player_update(u16 joyState)
     handleFire(joyState);
     handlePowerupTimer();
     updateInvulnerability();
+    updateLeanAnim(joyState);
 
     SPR_setPosition(player.sprite, F16_toInt(player.x), F16_toInt(player.y));
 }

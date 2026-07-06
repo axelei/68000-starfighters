@@ -46,25 +46,45 @@ def player_ship():
     # currently selected as the text palette (PAL_SHIP/PAL0 here, the
     # default). So index 15 is reserved as white for HUD text and left
     # unused by the ship artwork itself.
+    #
+    # 3-row sheet, one row per single-frame animation (neutral / leaning
+    # left / leaning right -- see player.c), same convention as enemy_bee()
+    # etc. Each lean shears the silhouette (nose shifts one way, engine base
+    # the other) so it reads as banking into the turn.
     pal = [TRANSPARENT] * 16
     pal[1] = (140, 220, 255)   # hull
     pal[2] = (235, 235, 245)   # nose highlight
     pal[3] = (40, 120, 180)    # engine glow accents
     pal[15] = (255, 255, 255) # HUD font ink
-    img = new_indexed((16, 16), pal)
-    # upward-pointing triangle, cockpit highlight
-    for row in range(16):
-        half_width = row // 2  # widens going down
-        cx = 8
-        x0 = cx - half_width
-        x1 = cx + half_width + 1
-        fill_rect(img, x0, row, x1, row + 1, 1)
-    # nose highlight
-    fill_rect(img, 7, 0, 9, 3, 2)
-    # engine glow accents at the base corners
-    fill_rect(img, 2, 13, 5, 16, 3)
-    fill_rect(img, 11, 13, 14, 16, 3)
-    return img
+
+    def draw(lean):
+        # lean: 0 = neutral, -1 = leaning left, 1 = leaning right.
+        img = new_indexed((16, 16), pal)
+
+        for row in range(16):
+            half_width = row // 2  # widens going down
+            shift = round(lean * (8 - row) / 4)
+            cx = 8 + shift
+            x0 = max(0, cx - half_width)
+            x1 = min(16, cx + half_width + 1)
+            fill_rect(img, x0, row, x1, row + 1, 1)
+
+        nose_cx = 8 + round(lean * (8 - 1) / 4)
+        fill_rect(img, nose_cx - 1, 0, nose_cx + 1, 3, 2)
+
+        tail_cx = 8 + round(lean * (8 - 14) / 4)
+        fill_rect(img, max(0, tail_cx - 6), 13, tail_cx - 3, 16, 3)
+        fill_rect(img, tail_cx + 3, 13, min(16, tail_cx + 6), 16, 3)
+
+        return img
+
+    frames = (draw(0), draw(-1), draw(1))  # neutral, lean-left, lean-right
+    combined = new_indexed((16, 16 * len(frames)), pal)
+    for frame_idx, frame in enumerate(frames):
+        for y in range(16):
+            for x in range(16):
+                set_px(combined, x, y + frame_idx * 16, frame.getpixel((x, y)))
+    return combined
 
 
 # palette 1 (PAL_ENEMY): shared by every enemy kind (bee/special/big), since

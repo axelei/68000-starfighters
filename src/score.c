@@ -2,6 +2,7 @@
 #include "resources.h"
 #include "player.h"
 #include "formation.h"
+#include <string.h>
 
 // HUD lives in a static side panel (right edge of the screen, out of the
 // playfield -- see PLAY_AREA_X_MAX in game.h) on the WINDOW plane, not the
@@ -28,6 +29,12 @@
 // everywhere else instead of the window swallowing the whole screen.
 #define GAMEOVER_HUD_Y 2
 #define GAMEOVER_BAND_ROWS 12
+
+// Same top-band trick as the game-over screen, but a smaller band just for
+// the "WAVE N" announcement (see formation.c), which only ever shows during
+// the pause between waves when no enemies are on screen.
+#define WAVE_ANNOUNCE_BAND_ROWS 6
+#define WAVE_ANNOUNCE_TEXT_Y    2
 
 #define POINTS_BEE     100
 #define POINTS_SPECIAL 300
@@ -127,6 +134,30 @@ void score_hud_update(void)
         uintToStr(displayedWave, buf, 2);
         VDP_drawText(buf, WAVE_HUD_X, WAVE_HUD_Y + 1);
     }
+}
+
+void score_showWaveAnnouncement(u16 waveNumber)
+{
+    // Bands the WINDOW's top rows across the full width (same OR-with-HPos
+    // trick as score_showGameOver()), so the banner is readable over
+    // whatever's behind it without hiding the rest of the screen.
+    VDP_setWindowVPos(FALSE, WAVE_ANNOUNCE_BAND_ROWS);
+    fillWindowRect(0, 0, HUD_PANEL_COL0, WAVE_ANNOUNCE_BAND_ROWS);
+
+    char text[16] = "WAVE ";
+    char num[4];
+    uintToStr(waveNumber, num, 1);
+    strcat(text, num);
+
+    // Centered within the play area (cols 0..HUD_PANEL_COL0), not the full
+    // 40-column screen -- the side panel reads as a separate strip.
+    u16 x = (HUD_PANEL_COL0 - strlen(text)) / 2;
+    VDP_drawText(text, x, WAVE_ANNOUNCE_TEXT_Y);
+}
+
+void score_hideWaveAnnouncement(void)
+{
+    VDP_setWindowVPos(FALSE, 0);
 }
 
 void score_showGameOver(void)

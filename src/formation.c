@@ -1,5 +1,6 @@
 #include "formation.h"
 #include "enemy.h"
+#include "score.h"
 #include "waves_generated.h"
 
 // Playfield bounds an entering enemy is allowed to travel through -- must
@@ -18,9 +19,13 @@
 // Pause between a wave being fully cleared and the next one swooping in.
 #define WAVE_CLEAR_DELAY 90 // 1.5s at 60fps
 
+// How long the "WAVE N" banner stays up once a wave starts.
+#define WAVE_ANNOUNCE_FRAMES 120 // 2s at 60fps
+
 static u16 waveIndex;       // which WaveDef (mod WAVE_COUNT) is currently in play
 static u16 wavesCleared;
-static u16 clearDelayTimer; // >0 while waiting to spawn the next wave
+static u16 clearDelayTimer;  // >0 while waiting to spawn the next wave
+static u16 announceTimer;    // >0 while the "WAVE N" banner is showing
 
 static bool isSpecialSlot(const WaveDef *wave, u16 row, u16 col)
 {
@@ -81,23 +86,38 @@ static void spawnWave(u16 index)
     }
 }
 
+static void startWave(u16 index)
+{
+    spawnWave(index);
+    score_showWaveAnnouncement(index % WAVE_COUNT + 1);
+    announceTimer = WAVE_ANNOUNCE_FRAMES;
+}
+
 void formation_init(void)
 {
     waveIndex = 0;
     wavesCleared = 0;
     clearDelayTimer = 0;
-    spawnWave(waveIndex);
+    announceTimer = 0;
+    startWave(waveIndex);
 }
 
 void formation_update(void)
 {
+    if (announceTimer > 0)
+    {
+        announceTimer--;
+        if (announceTimer == 0)
+            score_hideWaveAnnouncement();
+    }
+
     if (clearDelayTimer > 0)
     {
         clearDelayTimer--;
         if (clearDelayTimer == 0)
         {
             waveIndex++;
-            spawnWave(waveIndex);
+            startWave(waveIndex);
         }
         return;
     }
