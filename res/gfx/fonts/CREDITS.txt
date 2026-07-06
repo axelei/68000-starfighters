@@ -1,0 +1,13 @@
+master_512.ttf
+---------------
+"Master 512" font, from The Ultimate Oldschool PC Font Pack
+by VileR -- http://int10h.org
+
+Licensed under CC BY-SA 4.0:
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Used here as the source bitmap for banner_font.png (see
+generate_placeholders.py's banner_font()), which converts its 8x8 glyphs
+into an SGDK tileset loaded via VDP_loadFont() (see main.c). That
+generated tileset is a derivative work and, per CC BY-SA 4.0, is likewise
+available under the same license.

@@ -102,18 +102,8 @@ static void resolveEnemyThreatsVsPlayer(void)
         }
     }
 
-    for (u16 ti = 0; ti < MAX_TURRETS; ti++)
-    {
-        Turret *t = &turrets[ti];
-        if (!t->active)
-            continue;
-
-        if (aabb_overlaps(pbox, turret_getBounds(t)))
-        {
-            player_kill();
-            return;
-        }
-    }
+    // Turrets are terrain-attached scenery, not a ramming threat -- only
+    // their bullets can kill the player, not touching one directly.
 }
 
 static void resolvePlayerVsPowerups(void)

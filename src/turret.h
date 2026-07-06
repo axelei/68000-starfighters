@@ -13,10 +13,12 @@ typedef struct
     fix16 x;
     fix16 y;
     s16 hp;
-    u16 fireCooldown;
-    u16 shootAnimTimer; // frames remaining showing the "firing" sprite
-    u16 flashTimer;     // frames remaining showing the white hit-flash sprite
-    bool hasPowerup;    // drops a powerup on death instead of nothing
+    u16 fireCooldown;     // frames until the next burst starts
+    u8 burstShotsLeft;    // shots remaining in the current burst (0 = not bursting)
+    u16 burstTimer;       // frames until the next shot in the current burst
+    u16 shootAnimTimer;   // frames remaining showing the "firing" sprite
+    u16 flashTimer;       // frames remaining showing the white hit-flash sprite
+    bool hasPowerup;      // drops a powerup on death instead of nothing
 } Turret;
 
 extern Turret turrets[MAX_TURRETS];

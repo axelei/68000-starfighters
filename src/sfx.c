@@ -123,3 +123,18 @@ void sfx_update(void)
     updateChannel(&powerupState);
     updateChannel(&explosionState);
 }
+
+static void stopChannel(SfxChannelState *cs)
+{
+    cs->playing = FALSE;
+    cs->stepIndex = cs->stepCount;
+    cs->frameCounter = 0;
+    PSG_setEnvelope(cs->channel, PSG_ENVELOPE_MIN);
+}
+
+void sfx_stopAll(void)
+{
+    stopChannel(&shootState);
+    stopChannel(&powerupState);
+    stopChannel(&explosionState);
+}

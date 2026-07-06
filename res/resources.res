@@ -25,9 +25,9 @@ SPRITE spr_bullet_enemy   "gfx/bullet_enemy.png"   1 1 BEST
 SPRITE spr_powerup_spread "gfx/powerup_spread.png" 2 2 BEST
 SPRITE spr_powerup_speed  "gfx/powerup_speed.png"  2 2 BEST
 
-// Ground turret (see turret.c); terrain-attached, so it's drawn with
-// PAL_TERRA. No PALETTE entry -- it reuses palette_terra's already-loaded
-// colors (indices 6-8, see generate_placeholders.py's terrain_tiles()).
+// Ground turret (see turret.c); shares PAL_ENEMY with the rest of the
+// enemies. No PALETTE entry -- it reuses palette_enemy's already-loaded
+// colors (see generate_placeholders.py's ENEMY_PAL).
 SPRITE spr_turret         "gfx/turret.png"         2 2 BEST
 
 // -- title screen (see title.c). Bundles its own palette (loaded onto PAL0
@@ -47,3 +47,11 @@ TILESET hud_fill_tileset      "gfx/hud_fill.png"      BEST NONE
 // Red divider line between the playfield and the HUD side panel (see
 // score.c). Drawn with PAL_SHIP at runtime (index 4, see player_ship()).
 TILESET hud_separator_tileset "gfx/hud_separator.png" BEST NONE
+
+// Drop-in replacement for SGDK's default font (font_default), with an
+// opaque black background baked into every glyph tile instead of a
+// transparent one -- loaded once via VDP_loadFont() (see main.c). opt=NONE
+// is required here (not just conventional): VDP_loadFont() maps ASCII code
+// to tile position positionally (tile[i] = character 32+i), so any
+// tile-deduplication would break that mapping.
+TILESET banner_font_tileset "gfx/banner_font.png" BEST NONE

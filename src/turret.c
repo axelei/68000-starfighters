@@ -22,16 +22,18 @@ Turret turrets[MAX_TURRETS];
 
 #define HP_TURRET 8
 
-#define FIRE_COOLDOWN_MIN   100 // ~1.7s
+#define FIRE_COOLDOWN_MIN   100 // ~1.7s between bursts
 #define FIRE_COOLDOWN_RANGE 120 // up to +2s more
+#define BURST_SHOT_COUNT    3   // shots fired per burst
+#define BURST_SHOT_INTERVAL 3   // frames between each shot in a burst
 #define SHOOT_ANIM_FRAMES   12  // frames the muzzle-flash frame is held
 #define HIT_FLASH_FRAMES    3   // frames the white hit-flash frame is held
 #define TURRET_BULLET_SPEED FIX16(1.8)
 #define TURRET_AIM_JITTER   FIX16(0.5) // max +/- horizontal aim error
 
 // How often a spawn is *attempted* (not guaranteed -- see trySpawn()).
-#define SPAWN_CHECK_COOLDOWN_MIN   120 // 2s
-#define SPAWN_CHECK_COOLDOWN_RANGE 180 // up to +3s more
+#define SPAWN_CHECK_COOLDOWN_MIN   50 // ~0.8s
+#define SPAWN_CHECK_COOLDOWN_RANGE 70 // up to +1.2s more
 
 #define POWERUP_DROP_PERCENT 20 // chance a killed turret drops a powerup
 
@@ -148,6 +150,8 @@ static void trySpawn(void)
         t->active = TRUE;
         t->hp = HP_TURRET;
         t->fireCooldown = randomCooldown(FIRE_COOLDOWN_MIN, FIRE_COOLDOWN_RANGE);
+        t->burstShotsLeft = 0;
+        t->burstTimer = 0;
         t->shootAnimTimer = 0;
         t->flashTimer = 0;
         t->hasPowerup = (random() % 100) < POWERUP_DROP_PERCENT;
@@ -159,7 +163,7 @@ static void trySpawn(void)
 
         if (t->sprite == NULL)
             t->sprite = SPR_addSpriteEx(&spr_turret, x, y,
-                                         TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, idleTile), 0);
+                                         TILE_ATTR_FULL(PAL_ENEMY, FALSE, FALSE, FALSE, idleTile), 0);
         else
             SPR_setVRAMTileIndex(t->sprite, idleTile);
 
@@ -198,6 +202,35 @@ AABB turret_getBounds(const Turret *t)
     return box;
 }
 
+static void fireOneShot(Turret *t)
+{
+    fix16 bx = t->x + FIX16(TURRET_SPR_W / 2 - 4);
+    fix16 by = t->y + FIX16(TURRET_SPR_H);
+
+    fix16 dx = player.x - bx;
+    fix16 dy = player.y - by;
+    if (dy < FIX16(20)) dy = FIX16(20); // avoid divide blowup if level with/above the target
+
+    // Normalize (dx,dy) to a unit vector before scaling by speed --
+    // deriving vx from the slope while holding vy fixed (the old approach)
+    // made the total velocity grow with how horizontal the shot was, since
+    // vy never shrank to compensate for a larger vx.
+    fix16 dist = (fix16) getApproximatedDistance(dx, dy);
+    fix16 vx = F16_mul(F16_div(dx, dist), TURRET_BULLET_SPEED);
+    fix16 vy = F16_mul(F16_div(dy, dist), TURRET_BULLET_SPEED);
+    fix16 jitter = (fix16) (random() % (2 * TURRET_AIM_JITTER + 1)) - TURRET_AIM_JITTER;
+    vx += jitter;
+
+    bullet_spawn_enemy(bx, by, vx, vy);
+    sfx_play_shoot();
+
+    t->shootAnimTimer = SHOOT_ANIM_FRAMES;
+    // Don't clobber an in-progress hit-flash with the firing frame -- the
+    // flash takes visual priority either way.
+    if (t->flashTimer == 0)
+        SPR_setVRAMTileIndex(t->sprite, firingTile);
+}
+
 void turrets_update(void)
 {
     if (spawnCooldown > 0)
@@ -230,39 +263,33 @@ void turrets_update(void)
         bool onScreen = F16_toInt(t->y) >= 0 && F16_toInt(t->y) <= SCREEN_H - TURRET_SPR_H;
         if (onScreen)
         {
-            if (t->fireCooldown > 0)
+            if (t->burstShotsLeft > 0)
+            {
+                // Mid-burst: space the remaining shots BURST_SHOT_INTERVAL
+                // frames apart instead of firing them all on the same frame.
+                if (t->burstTimer > 0)
+                {
+                    t->burstTimer--;
+                }
+                else
+                {
+                    fireOneShot(t);
+                    t->burstShotsLeft--;
+                    t->burstTimer = BURST_SHOT_INTERVAL;
+                }
+            }
+            else if (t->fireCooldown > 0)
             {
                 t->fireCooldown--;
             }
             else
             {
-                fix16 bx = t->x + FIX16(TURRET_SPR_W / 2 - 4);
-                fix16 by = t->y + FIX16(TURRET_SPR_H);
-
-                fix16 dx = player.x - bx;
-                fix16 dy = player.y - by;
-                if (dy < FIX16(20)) dy = FIX16(20); // avoid divide blowup if level with/above the target
-
-                // Normalize (dx,dy) to a unit vector before scaling by
-                // speed -- deriving vx from the slope while holding vy
-                // fixed (the old approach) made the total velocity grow
-                // with how horizontal the shot was, since vy never shrank
-                // to compensate for a larger vx.
-                fix16 dist = (fix16) getApproximatedDistance(dx, dy);
-                fix16 vx = F16_mul(F16_div(dx, dist), TURRET_BULLET_SPEED);
-                fix16 vy = F16_mul(F16_div(dy, dist), TURRET_BULLET_SPEED);
-                fix16 jitter = (fix16) (random() % (2 * TURRET_AIM_JITTER + 1)) - TURRET_AIM_JITTER;
-                vx += jitter;
-
-                bullet_spawn_enemy(bx, by, vx, vy);
-                sfx_play_shoot();
-
+                // Start a new burst: fire immediately, then queue up the
+                // rest to follow at BURST_SHOT_INTERVAL spacing.
+                fireOneShot(t);
+                t->burstShotsLeft = BURST_SHOT_COUNT - 1;
+                t->burstTimer = BURST_SHOT_INTERVAL;
                 t->fireCooldown = randomCooldown(FIRE_COOLDOWN_MIN, FIRE_COOLDOWN_RANGE);
-                t->shootAnimTimer = SHOOT_ANIM_FRAMES;
-                // Don't clobber an in-progress hit-flash with the firing
-                // frame -- the flash takes visual priority either way.
-                if (t->flashTimer == 0)
-                    SPR_setVRAMTileIndex(t->sprite, firingTile);
             }
         }
 

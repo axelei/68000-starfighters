@@ -38,6 +38,10 @@ void powerup_spawnAt(s16 x, s16 y)
             p->sprite = SPR_addSprite(def, x, y, TILE_ATTR(PAL_PWR, FALSE, FALSE, FALSE));
         else
         {
+            // This pool slot may have last shown the other powerup type --
+            // update its visual to match the one just chosen (cheap, since
+            // this sprite isn't using SPR_FLAG_AUTO_VRAM_ALLOC/shared VRAM).
+            SPR_setDefinition(p->sprite, def);
             SPR_setVisibility(p->sprite, VISIBLE);
             SPR_setPosition(p->sprite, x, y);
         }

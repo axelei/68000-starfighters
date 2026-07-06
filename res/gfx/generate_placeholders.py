@@ -15,7 +15,7 @@ sprite transparency).
 import os
 import subprocess
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 TRANSPARENT = (0, 0, 0)
 
@@ -61,6 +61,7 @@ def player_ship():
     pal[2] = (235, 235, 245)   # nose highlight
     pal[3] = (40, 120, 180)    # engine glow accents
     pal[4] = (200, 30, 30)     # HUD separator line (red)
+    pal[5] = (0, 0, 0)         # opaque black text background (see banner_font())
     pal[15] = (255, 255, 255) # HUD font ink
 
     def draw(lean):
@@ -307,18 +308,12 @@ def terrain_tiles():
     # 1-3 -- even though no pixel in *this* image uses 4/5. starfield_tiles()
     # below must use those same indices for its pixels to pick up the right
     # colors instead of terrain's.
-    # Indices 6-8 are turret.c's ground-turret colors (see turret()) --
-    # drawn with this same palette since it's a terrain-attached element,
-    # not a formation enemy.
     pal = [TRANSPARENT] * 16
     pal[1] = (90, 70, 60)
     pal[2] = (130, 100, 80)
     pal[3] = (60, 45, 40)
     pal[4] = (255, 255, 255)  # star bright (was starfield's own index 1)
     pal[5] = (150, 170, 220)  # star dim (was starfield's own index 2)
-    pal[6] = (90, 100, 90)    # turret body
-    pal[7] = (50, 55, 50)     # turret barrel
-    pal[8] = (255, 230, 120)  # turret muzzle flash
     img = new_indexed((32, 8), pal)
     # tile 0: flat ground
     fill_rect(img, 0, 0, 8, 8, 1)
@@ -358,26 +353,20 @@ def starfield_tiles():
 
 
 def turret():
-    # Ground turret (see turret.c): a terrain-attached element rather than
-    # a formation enemy, so it's drawn with palette_terra's colors (indices
-    # 6-8, see terrain_tiles()) instead of palette_enemy's. 3-row sheet, one
-    # row per single-frame animation (idle / firing / hit-flash), same
-    # convention as enemy_bee() etc -- selected at runtime via a shared VRAM
-    # tile index (see turret.c), not SPR_setAnim. The flash frame reuses
-    # index 4 (star bright white, already in this shared palette) rather
-    # than needing yet another dedicated color.
+    # Ground turret (see turret.c): shares ENEMY_PAL with the rest of the
+    # enemies (bee/special/big/explosion) rather than having its own
+    # palette, even though it's terrain-attached rather than a formation
+    # enemy. 3-row sheet, one row per single-frame animation (idle / firing
+    # / hit-flash), same convention as enemy_bee() etc -- selected at
+    # runtime via a shared VRAM tile index (see turret.c), not SPR_setAnim.
     w = h = 16
-    pal = [TRANSPARENT] * 16
-    pal[4] = (255, 255, 255)  # star bright / turret hit-flash (see terrain_tiles())
-    pal[6] = (90, 100, 90)
-    pal[7] = (50, 55, 50)
-    pal[8] = (255, 230, 120)
+    pal = ENEMY_PAL
 
     def draw(img, firing):
-        fill_rect(img, 2, 8, 14, 16, 6)   # base
-        fill_rect(img, 6, 2, 10, 12, 7)   # barrel, pointing down at the player
+        fill_rect(img, 2, 8, 14, 16, 3)   # base
+        fill_rect(img, 6, 2, 10, 12, 1)   # barrel, pointing down at the player
         if firing:
-            fill_rect(img, 4, 10, 12, 13, 8)  # muzzle flash
+            fill_rect(img, 4, 10, 12, 13, 2)  # muzzle flash
 
     idle = new_indexed((w, h), pal)
     draw(idle, False)
@@ -390,7 +379,7 @@ def turret():
     for y in range(h):
         for x in range(w):
             if flash.getpixel((x, y)) != 0:
-                set_px(flash, x, y, 4)
+                set_px(flash, x, y, 4)  # solid white hit-flash, same as enemy_bee() etc
 
     combined = new_indexed((w, h * 3), pal)
     for frame_idx, frame in enumerate((idle, firing, flash)):
@@ -427,6 +416,58 @@ def hud_separator():
     return img
 
 
+def banner_font():
+    # Drop-in replacement for SGDK's default font (font_default), loaded via
+    # VDP_loadFont() (see main.c) -- SGDK's own font tiles have a
+    # *transparent* background (index 0) behind the ink, so text drawn with
+    # it never has a real opaque backing, just whatever happens to be
+    # underneath. This one fills every glyph tile with an actual opaque
+    # black (index 5, see player_ship()) first, so VDP_drawText always shows
+    # solid black immediately behind each character -- without needing a
+    # separate background rectangle painted under a whole block of text.
+    #
+    # Space (tile 0) is the one exception, left fully transparent (index 0):
+    # VDP_clearTextArea() "clears" a region by filling it with the space
+    # tile (see vdp_bg.c), so if space were opaque too, that call would
+    # paint a solid black rectangle across whatever area it's clearing
+    # instead of actually clearing it.
+    #
+    # Glyphs come from "Master 512" (fonts/master_512.ttf), an authentic
+    # 8x8 oldschool PC bitmap font from VileR's Ultimate Oldschool PC Font
+    # Pack (http://int10h.org, CC BY-SA 4.0 -- see fonts/CREDITS.txt),
+    # rather than PIL's own tiny default font, which rendered illegibly at
+    # this size. It's a genuine 8x8 bitmap strike (not an outline font
+    # scaled down), so requesting size=8 reproduces its pixels exactly, no
+    # anti-aliasing/interpolation.
+    #
+    # Covers the same FONT_LEN=96 characters (ASCII 32..127) at the same 8x8
+    # tile size SGDK's own font does, one tile per character in order, so it
+    # can be loaded as a straight replacement.
+    FONT_LEN = 96
+    w = h = 8
+    pal = [TRANSPARENT] * 16
+    pal[5] = (0, 0, 0)
+    pal[15] = (255, 255, 255)
+
+    font_path = os.path.join(os.path.dirname(__file__), "fonts", "master_512.ttf")
+    font = ImageFont.truetype(font_path, 8)
+
+    combined = new_indexed((w * FONT_LEN, h), pal)
+    fill_rect(combined, w, 0, w * FONT_LEN, h, 5)  # skip tile 0 (space) -- stays transparent
+
+    for i in range(FONT_LEN):
+        ch = chr(32 + i)
+        glyph = Image.new("L", (w, h), 0)
+        d = ImageDraw.Draw(glyph)
+        d.text((0, 0), ch, fill=255, font=font)
+        for y in range(h):
+            for x in range(w):
+                if glyph.getpixel((x, y)) > 128:
+                    set_px(combined, i * w + x, y, 15)
+
+    return combined
+
+
 GENERATORS = {
     "player_ship.png": player_ship,
     "enemy_bee.png": enemy_bee,
@@ -443,6 +484,7 @@ GENERATORS = {
     "turret.png": turret,
     "hud_fill.png": hud_fill,
     "hud_separator.png": hud_separator,
+    "banner_font.png": banner_font,
 }
 
 def git_is_dirty(path):

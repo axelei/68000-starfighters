@@ -40,6 +40,14 @@ void title_run(void)
     // behind it (revealing BG_B, not BG_A, within the window's band).
     VDP_setWindowVPos(FALSE, 0);
 
+    // score_init() leaves the WINDOW's HPos set to the HUD side panel's
+    // column range for the whole game, and it's never reset on the way back
+    // here either -- with VPos now off, that HPos alone still keeps the
+    // window (and its opaque side-panel background) showing on every row,
+    // covering the right part of the logo/screen with the previous game's
+    // leftover HUD panel.
+    VDP_setWindowHPos(FALSE, 0);
+
     VDP_drawImageEx(BG_A, &title_image, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, TITLE_BASE_TILE),
                      LOGO_TILE_X, LOGO_TILE_Y, TRUE, FALSE);
 

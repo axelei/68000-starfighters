@@ -20,6 +20,15 @@ int main(bool hardReset)
     SPR_init();
     JOY_init();
 
+    // Replaces SGDK's default font for the whole game: its tiles have a
+    // transparent background behind the ink, so text never has a real
+    // opaque backing, just whatever happens to be underneath. This one has
+    // an opaque black background baked into every glyph tile instead (see
+    // generate_placeholders.py's banner_font()), so VDP_drawText always
+    // shows solid black immediately behind each character without needing
+    // a separate background rectangle painted under a whole block of text.
+    VDP_loadFont(&banner_font_tileset, CPU);
+
     // HUD/menu text goes on the WINDOW plane, not the default (BG_A) text
     // plane -- BG_A is continuously scrolled by terrain_update(), which
     // would otherwise drag the score display up the screen along with the
@@ -113,6 +122,10 @@ int main(bool hardReset)
         }
 
         PAL_fadeOutAll(30, FALSE);
+
+        // Otherwise whatever sound effect was mid-playback (shoot,
+        // explosion...) keeps running right into the title screen.
+        sfx_stopAll();
 
         enemies_hideAll();
         bullets_hideAll();

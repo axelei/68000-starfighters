@@ -60,6 +60,20 @@ static void fillWindowRect(u16 x0, u16 y0, u16 x1, u16 y1)
             VDP_setTileMapXY(WINDOW, tile, x, y);
 }
 
+// Resets a WINDOW-plane rectangle to a genuinely blank tile (raw index 0,
+// not the font's space glyph -- see banner_font()'s tile 0). Needed before
+// each banner draw: VDP_drawText() only touches the cells its string
+// actually spans, so without this, a previous draw's leftover glyphs (e.g.
+// "WAVE 9" at one X position vs "WAVE 10" at a shifted one, or a stale
+// GAME OVER screen from a prior round) would keep showing wherever the new,
+// shorter/differently-positioned text doesn't happen to overwrite them.
+static void clearWindowRect(u16 x0, u16 y0, u16 x1, u16 y1)
+{
+    for (u16 y = y0; y < y1; y++)
+        for (u16 x = x0; x < x1; x++)
+            VDP_setTileMapXY(WINDOW, 0, x, y);
+}
+
 void score_init(void)
 {
     score = 0;
@@ -148,10 +162,11 @@ void score_hud_update(void)
 void score_showWaveAnnouncement(u16 waveNumber)
 {
     // Bands the WINDOW's top rows across the full width (same OR-with-HPos
-    // trick as score_showGameOver()). Left blank/transparent (no opaque
-    // fill) so it's plain white text floating over the playfield, not a
-    // black bar -- only the HUD side panel gets an opaque background.
+    // trick as score_showGameOver()). No background rectangle needed here --
+    // the font itself (see main.c's VDP_loadFont() call) carries an opaque
+    // black background in every glyph tile now.
     VDP_setWindowVPos(FALSE, WAVE_ANNOUNCE_BAND_ROWS);
+    clearWindowRect(0, 0, HUD_PANEL_COL0, WAVE_ANNOUNCE_BAND_ROWS);
 
     char text[16] = "WAVE ";
     char num[4];
@@ -179,9 +194,11 @@ void score_showGameOver(void)
     // these top rows (game-over text) while leaving the rest of the screen
     // (terrain, enemies, etc.) still visible underneath, rather than
     // covering the entire screen the way expanding HPos to full width would.
-    // Left blank/transparent (no opaque fill) so it's plain white text
-    // floating over the playfield, not a black bar.
+    // No background rectangle needed here -- the font itself (see main.c's
+    // VDP_loadFont() call) carries an opaque black background in every
+    // glyph tile now.
     VDP_setWindowVPos(FALSE, GAMEOVER_BAND_ROWS);
+    clearWindowRect(0, 0, HUD_PANEL_COL0, GAMEOVER_BAND_ROWS);
 
     VDP_drawText("GAME OVER", 13, GAMEOVER_HUD_Y);
     VDP_drawText("FINAL SCORE", 12, GAMEOVER_HUD_Y + 2);
