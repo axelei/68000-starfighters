@@ -45,23 +45,20 @@ Turret turrets[MAX_TURRETS];
 static u16 idleTile;
 static u16 firingTile;
 static u16 flashTile;
-static bool tilesLoaded = FALSE;
 
 static u16 spawnCooldown;
 
+// Reloaded every time (no "already loaded" guard) -- see enemy.c's
+// loadSharedTiles for why: a soft reset clears VRAM but not this static
+// state, so a one-time guard would skip the re-upload after a reset.
 static void loadSharedTiles(void)
 {
-    if (tilesLoaded)
-        return;
-
     u16 totalTiles;
     u16 **idx = SPR_loadAllFrames(&spr_turret, TURRET_TILE_BASE, &totalTiles);
     idleTile = idx[0][0];
     firingTile = idx[1][0];
     flashTile = idx[2][0];
     MEM_free(idx);
-
-    tilesLoaded = TRUE;
 }
 
 // What the turret should be showing right now, ignoring any hit-flash.
@@ -106,9 +103,12 @@ static const TerrainClump *findApproachingClump(void)
     const TerrainClump *candidates[MAX_TERRAIN_CLUMPS];
     u16 count = 0;
 
-    for (u16 i = 0; i < terrainClumpCount; i++)
+    for (u16 i = 0; i < MAX_TERRAIN_CLUMPS; i++)
     {
         const TerrainClump *c = &terrainClumps[i];
+        if (c->tileW == 0 || c->tileH == 0) // empty anchor slot -- see terrain.h
+            continue;
+
         s16 screenY = terrain_clumpScreenY(c);
         if (screenY >= -CLUMP_APPROACH_PX && screenY < 0)
         {

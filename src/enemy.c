@@ -54,15 +54,17 @@ static u16 activeDivers;
 // SPR_setAnim/SPR_setFrame, which would try to re-upload tile data.
 static u16 normalTile[3];
 static u16 flashTile[3];
-static bool tilesLoaded = FALSE;
 
 #define ENEMY_TILE_BASE (TILE_USER_INDEX + 128)
 
+// Reloaded every time (no "already loaded" guard): a soft reset (console
+// reset button) retains RAM/globals but the VDP's own reset clears VRAM, so
+// a static "loaded" flag would stay TRUE across the reset and skip the
+// re-upload, leaving these tiles missing on screen even though the C state
+// looks fine. Tiles land at fixed indices (ENEMY_TILE_BASE), so reloading is
+// idempotent and cheap -- fine to redo on every enemies_init().
 static void loadSharedTiles(void)
 {
-    if (tilesLoaded)
-        return;
-
     u16 totalTiles;
     u16 base = ENEMY_TILE_BASE;
 
@@ -82,8 +84,6 @@ static void loadSharedTiles(void)
     normalTile[ENEMY_KIND_BIG] = idx[0][0];
     flashTile[ENEMY_KIND_BIG] = idx[1][0];
     MEM_free(idx);
-
-    tilesLoaded = TRUE;
 }
 
 void enemies_init(void)

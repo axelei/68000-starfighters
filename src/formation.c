@@ -1,6 +1,7 @@
 #include "formation.h"
 #include "enemy.h"
 #include "score.h"
+#include "terrain.h"
 #include "waves_generated.h"
 
 // Playfield bounds an entering enemy is allowed to travel through -- must
@@ -95,6 +96,11 @@ static void startWave(u16 index)
     waveSpawnPending = TRUE;
     score_showWaveAnnouncement(index % WAVE_COUNT + 1);
     announceTimer = WAVE_ANNOUNCE_FRAMES;
+
+    // Vary the scrolling terrain/starfield over a long game, but only here,
+    // at wave boundaries -- see terrain_regenerateOffscreenBand() for why
+    // this can't just happen continuously during scroll.
+    terrain_regenerateOffscreenBand();
 }
 
 void formation_init(void)

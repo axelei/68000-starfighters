@@ -47,7 +47,6 @@ static u32 score;
 static u32 displayedScore = 0xFFFFFFFF; // force first draw
 static u8 displayedLives = 0xFF;        // force first draw
 static u16 displayedWave = 0xFFFF;      // force first draw
-static bool tilesetLoaded = FALSE;
 
 // Paints a WINDOW-plane rectangle solid black using an opaque fill tile --
 // blank (index 0) tiles are transparent on Genesis hardware and would let
@@ -84,12 +83,13 @@ void score_init(void)
     displayedLives = 0xFF;
     displayedWave = 0xFFFF;
 
-    if (!tilesetLoaded)
-    {
-        VDP_loadTileSet(&hud_fill_tileset, HUD_FILL_TILE, CPU);
-        VDP_loadTileSet(&hud_separator_tileset, HUD_SEPARATOR_TILE, CPU);
-        tilesetLoaded = TRUE;
-    }
+    // Reloaded every time (no "already loaded" guard) -- a soft reset
+    // (console reset button) retains RAM/globals but the VDP's own reset
+    // clears VRAM, so a one-time guard would stay tripped across the reset
+    // and skip the re-upload, leaving these tiles missing on screen even
+    // though the C state looks fine. Fixed tile indices make this idempotent.
+    VDP_loadTileSet(&hud_fill_tileset, HUD_FILL_TILE, CPU);
+    VDP_loadTileSet(&hud_separator_tileset, HUD_SEPARATOR_TILE, CPU);
 
     // Clip the WINDOW plane back down to the side panel (game-over may have
     // banded it to the top rows on the previous round).

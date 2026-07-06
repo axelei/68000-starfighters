@@ -28,20 +28,17 @@ static Explosion explosions[MAX_EXPLOSIONS];
 #define EXPLOSION_TILE_BASE (TILE_USER_INDEX + 176)
 
 static u16 frameTile[EXPLOSION_FRAME_COUNT];
-static bool tilesLoaded = FALSE;
 
+// Reloaded every time (no "already loaded" guard) -- see enemy.c's
+// loadSharedTiles for why: a soft reset clears VRAM but not this static
+// state, so a one-time guard would skip the re-upload after a reset.
 static void loadSharedTiles(void)
 {
-    if (tilesLoaded)
-        return;
-
     u16 totalTiles;
     u16 **idx = SPR_loadAllFrames(&spr_explosion, EXPLOSION_TILE_BASE, &totalTiles);
     for (u16 f = 0; f < EXPLOSION_FRAME_COUNT; f++)
         frameTile[f] = idx[0][f];
     MEM_free(idx);
-
-    tilesLoaded = TRUE;
 }
 
 void explosions_init(void)

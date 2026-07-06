@@ -18,13 +18,12 @@ Bullet enemyBullets[MAX_ENEMY_BULLETS];
 
 static u16 playerBulletTile;
 static u16 enemyBulletTile;
-static bool tilesLoaded = FALSE;
 
+// Reloaded every time (no "already loaded" guard) -- see enemy.c's
+// loadSharedTiles for why: a soft reset clears VRAM but not this static
+// state, so a one-time guard would skip the re-upload after a reset.
 static void loadSharedTiles(void)
 {
-    if (tilesLoaded)
-        return;
-
     u16 totalTiles;
     u16 base = BULLET_TILE_BASE;
 
@@ -36,8 +35,6 @@ static void loadSharedTiles(void)
     idx = SPR_loadAllFrames(&spr_bullet_enemy, base, &totalTiles);
     enemyBulletTile = idx[0][0];
     MEM_free(idx);
-
-    tilesLoaded = TRUE;
 }
 
 static void pool_init(Bullet *pool, u16 count)
