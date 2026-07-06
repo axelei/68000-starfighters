@@ -57,8 +57,17 @@ static void respawn(void)
 void player_init(void)
 {
     player.lives = STARTING_LIVES;
+    // Low priority, like every other gameplay sprite (enemies/bullets/
+    // turrets/explosions/powerups): terrain and starfield are both low
+    // priority too, so this doesn't change how the ship layers against them
+    // (sprite always beats BG_A/B regardless of the priority bit). What it
+    // does change is the WINDOW-plane banner text (score.c), which draws at
+    // high priority -- with the ship also at high priority, Sprite(high)
+    // would always render above Window(high) and the ship could fly under
+    // the GAME OVER/WAVE banner and cover it. Low priority puts it below
+    // that text while still above the low-priority background planes.
     if (player.sprite == NULL)
-        player.sprite = SPR_addSprite(&spr_player, 0, 0, TILE_ATTR(PAL_SHIP, TRUE, FALSE, FALSE));
+        player.sprite = SPR_addSprite(&spr_player, 0, 0, TILE_ATTR(PAL_SHIP, FALSE, FALSE, FALSE));
     respawn();
 }
 

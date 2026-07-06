@@ -426,11 +426,15 @@ def banner_font():
     # solid black immediately behind each character -- without needing a
     # separate background rectangle painted under a whole block of text.
     #
-    # Space (tile 0) is the one exception, left fully transparent (index 0):
-    # VDP_clearTextArea() "clears" a region by filling it with the space
-    # tile (see vdp_bg.c), so if space were opaque too, that call would
-    # paint a solid black rectangle across whatever area it's clearing
-    # instead of actually clearing it.
+    # Space (tile 0) also gets the opaque black background -- a transparent
+    # space would leave a gap in the middle of banner text (e.g. between
+    # "GAME" and "OVER") showing sprites/starfield through it instead of a
+    # solid backing. VDP_clearTextArea() does "clear" a region by filling it
+    # with this tile (see vdp_bg.c), so main.c's one call to it at round-end
+    # now paints solid black instead of truly clearing -- harmless, since
+    # that call runs after the screen's already faded to black and the
+    # WINDOW plane is restricted back to its normal narrow bands before
+    # anything is shown again (see score_init()).
     #
     # Glyphs come from "Master 512" (fonts/master_512.ttf), an authentic
     # 8x8 oldschool PC bitmap font from VileR's Ultimate Oldschool PC Font
@@ -453,7 +457,7 @@ def banner_font():
     font = ImageFont.truetype(font_path, 8)
 
     combined = new_indexed((w * FONT_LEN, h), pal)
-    fill_rect(combined, w, 0, w * FONT_LEN, h, 5)  # skip tile 0 (space) -- stays transparent
+    fill_rect(combined, 0, 0, w * FONT_LEN, h, 5)  # includes tile 0 (space) -- opaque too
 
     for i in range(FONT_LEN):
         ch = chr(32 + i)

@@ -23,19 +23,20 @@
 #define WAVE_HUD_X  (HUD_PANEL_COL0 + 1)
 #define WAVE_HUD_Y  10
 
-// The WINDOW plane's vertical position can only band rows from the top or
-// bottom edge (never a floating band in the middle), so to get text reading
-// as "the middle of the playfield" the band is anchored at the top but sized
-// to reach just past screen-vertical-center (row SCREEN_H_TILES/2 = 14),
-// with the text itself placed near the band's bottom edge.
-#define GAMEOVER_HUD_Y 8
-#define GAMEOVER_BAND_ROWS 18
+// The WINDOW plane's vertical position can only band full rows from the top
+// or bottom edge -- never an arbitrary rectangle, and never a subset of rows
+// with gaps in it. So every line here is packed onto fully consecutive rows
+// starting at row 0, with no blank spacer rows between them: the band then
+// exactly equals the rows that actually have text on them, with nothing
+// above or below it hidden unnecessarily.
+#define GAMEOVER_HUD_Y 0
+#define GAMEOVER_BAND_ROWS 6 // rows 0..5, one per line below, no gaps
 
 // Same top-band trick as the game-over screen, but just for the "WAVE N"
 // announcement (see formation.c), which only ever shows during the pause
 // between waves when no enemies are on screen.
-#define WAVE_ANNOUNCE_BAND_ROWS 14
-#define WAVE_ANNOUNCE_TEXT_Y    13
+#define WAVE_ANNOUNCE_TEXT_Y    0
+#define WAVE_ANNOUNCE_BAND_ROWS 1 // just row 0 -- the single line of text
 
 #define POINTS_BEE     100
 #define POINTS_SPECIAL 300
@@ -60,18 +61,20 @@ static void fillWindowRect(u16 x0, u16 y0, u16 x1, u16 y1)
             VDP_setTileMapXY(WINDOW, tile, x, y);
 }
 
-// Resets a WINDOW-plane rectangle to a genuinely blank tile (raw index 0,
-// not the font's space glyph -- see banner_font()'s tile 0). Needed before
-// each banner draw: VDP_drawText() only touches the cells its string
-// actually spans, so without this, a previous draw's leftover glyphs (e.g.
-// "WAVE 9" at one X position vs "WAVE 10" at a shifted one, or a stale
-// GAME OVER screen from a prior round) would keep showing wherever the new,
-// shorter/differently-positioned text doesn't happen to overwrite them.
+// Resets a WINDOW-plane rectangle to the opaque fill tile before drawing new
+// banner text into it. Needed for two reasons: (1) VDP_drawText() only
+// touches the cells its string actually spans, so without clearing first, a
+// previous draw's leftover glyphs (e.g. "WAVE 9" at one X position vs
+// "WAVE 10" at a shifted one, or a stale GAME OVER screen from a prior
+// round) would keep showing wherever the new, shorter/differently-positioned
+// text doesn't happen to overwrite; and (2) centered text never spans the
+// *entire* banded row, so the untouched columns left and right of it need to
+// be solid, not a raw blank (index 0) tile -- blank tiles are transparent on
+// Genesis hardware and would let sprites/starfield show through the gaps
+// beside the text instead of the intended solid backing.
 static void clearWindowRect(u16 x0, u16 y0, u16 x1, u16 y1)
 {
-    for (u16 y = y0; y < y1; y++)
-        for (u16 x = x0; x < x1; x++)
-            VDP_setTileMapXY(WINDOW, 0, x, y);
+    fillWindowRect(x0, y0, x1, y1);
 }
 
 void score_init(void)
@@ -201,11 +204,11 @@ void score_showGameOver(void)
     clearWindowRect(0, 0, HUD_PANEL_COL0, GAMEOVER_BAND_ROWS);
 
     VDP_drawText("GAME OVER", 13, GAMEOVER_HUD_Y);
-    VDP_drawText("FINAL SCORE", 12, GAMEOVER_HUD_Y + 2);
+    VDP_drawText("FINAL SCORE", 12, GAMEOVER_HUD_Y + 1);
     uintToStr(score, buf, 6);
-    VDP_drawText(buf, 14, GAMEOVER_HUD_Y + 3);
-    VDP_drawText("WAVES CLEARED", 11, GAMEOVER_HUD_Y + 5);
+    VDP_drawText(buf, 14, GAMEOVER_HUD_Y + 2);
+    VDP_drawText("WAVES CLEARED", 11, GAMEOVER_HUD_Y + 3);
     uintToStr(formation_wavesCleared(), buf, 2);
-    VDP_drawText(buf, 17, GAMEOVER_HUD_Y + 6);
-    VDP_drawText("PRESS START", 12, GAMEOVER_HUD_Y + 8);
+    VDP_drawText(buf, 17, GAMEOVER_HUD_Y + 4);
+    VDP_drawText("PRESS START", 12, GAMEOVER_HUD_Y + 5);
 }
