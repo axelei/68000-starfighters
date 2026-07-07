@@ -214,6 +214,22 @@ void score_hideWaveAnnouncement(void)
     VDP_setWindowVPos(FALSE, 0);
 }
 
+void score_showPause(void)
+{
+    // Same single-row top band as the wave announcement.
+    VDP_setWindowVPos(FALSE, WAVE_ANNOUNCE_BAND_ROWS);
+    clearWindowRect(0, 0, HUD_PANEL_COL0, WAVE_ANNOUNCE_BAND_ROWS);
+
+    const char *text = "PAUSE";
+    u16 x = (HUD_PANEL_COL0 - strlen(text)) / 2;
+    VDP_drawText(text, x, WAVE_ANNOUNCE_TEXT_Y);
+}
+
+void score_hidePause(void)
+{
+    VDP_setWindowVPos(FALSE, 0);
+}
+
 void score_showGameOver(void)
 {
     char buf[12];

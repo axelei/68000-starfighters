@@ -2,6 +2,7 @@
 #include "enemy.h"
 #include "score.h"
 #include "terrain.h"
+#include "player.h"
 #include "waves_generated.h"
 
 // Playfield bounds an entering enemy is allowed to travel through -- must
@@ -174,7 +175,11 @@ void formation_update(void)
         return;
     }
 
-    if (!inInterwave && !waveForcedOut && waveTimer > 0)
+    // formation_update() (and everything else) keeps running behind the
+    // "GAME OVER" screen -- see main.c -- but the wave clock specifically
+    // should freeze there rather than keep ticking down/hitting 0 while the
+    // player can't do anything about it.
+    if (!inInterwave && !waveForcedOut && waveTimer > 0 && !player_isGameOver())
     {
         waveTimer--;
         if (waveTimer == 0)

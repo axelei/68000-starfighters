@@ -19,6 +19,11 @@ u32 score_getValue(void);
 void score_showWaveAnnouncement(u16 waveNumber);
 void score_hideWaveAnnouncement(void);
 
+// Shows/hides a "PAUSE" banner, same top-band style as the wave
+// announcement -- see main.c's Start-button pause toggle.
+void score_showPause(void);
+void score_hidePause(void);
+
 // Shows the game-over screen with the final score. Milestone 1 has a single
 // life, so this is called directly on player death.
 void score_showGameOver(void);

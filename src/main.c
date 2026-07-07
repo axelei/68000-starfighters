@@ -81,32 +81,56 @@ int main(bool hardReset)
 
         bool gameOverShown = FALSE;
         bool startReleased = FALSE; // debounce: ignore Start until it's been let go once
+        bool paused = FALSE;
+        bool startWasDown = FALSE; // edge-detects a fresh Start press for the pause toggle
 
         while (TRUE)
         {
             u16 joyState = JOY_readJoypad(JOY_1);
             bool gameOver = player_isGameOver();
 
-            // Once the player is out of lives, the scene keeps animating
-            // (enemies, terrain, explosions...) behind the "GAME OVER" text
-            // rather than freezing, until Start is pressed to return to the
-            // title screen.
-            if (!gameOver)
-                player_update(joyState);
+            bool startDown = (joyState & BUTTON_START) != 0;
+            bool startPressed = startDown && !startWasDown;
+            startWasDown = startDown;
 
-            bullets_update();
-            enemies_update();
-            formation_update();
-            terrain_update();
-            powerups_update();
-            explosions_update();
-            turrets_update();
+            // Game-over already has its own Start handling (return to
+            // title) below, with its own debounce -- pausing only applies
+            // while actually playing. Can't overlap with game-over anyway:
+            // the player can't die while paused (collisions_resolve() is
+            // skipped below), so the two never need to be true together.
+            if (!gameOver && startPressed)
+            {
+                paused = !paused;
+                if (paused)
+                    score_showPause();
+                else
+                    score_hidePause();
+            }
 
-            if (!gameOver)
-                collisions_resolve();
+            if (!paused)
+            {
+                // Once the player is out of lives, the scene keeps animating
+                // (enemies, terrain, explosions...) behind the "GAME OVER" text
+                // rather than freezing, until Start is pressed to return to the
+                // title screen.
+                if (!gameOver)
+                    player_update(joyState);
+
+                bullets_update();
+                enemies_update();
+                formation_update();
+                terrain_update();
+                powerups_update();
+                explosions_update();
+                turrets_update();
+
+                if (!gameOver)
+                    collisions_resolve();
+
+                sfx_update();
+            }
 
             score_hud_update();
-            sfx_update();
 
             if (gameOver)
             {
