@@ -46,6 +46,12 @@ SPRITE spr_enemy_waver_c  "gfx/enemy_waver_c.png"  2 2 BEST
 // when drawn) -- not one of the 3 shared gameplay hardware palettes.
 IMAGE title_image "gfx/title.png"
 
+// Title screen music (see title.c) -- played through the XGM2 Z80 driver,
+// loaded only while the title screen is up and unloaded again once Start is
+// pressed, so it never contends with sfx.c's direct PSG writes during
+// actual gameplay (see title.c's comment on this).
+XGM2 title_music "music/title.vgm"
+
 // -- tilesets for scrolling backgrounds (BG_A = terrain, BG_B = starfield)
 // opt=NONE keeps every tile distinct/in-order, since terrain.c indexes
 // tiles by their position in the source sheet.

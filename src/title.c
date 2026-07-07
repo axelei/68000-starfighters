@@ -60,6 +60,14 @@ void title_run(void)
     VDP_setTextPlane(BG_A);
     VDP_drawText("PRESS START", PRESS_START_X, PRESS_START_Y);
 
+    // Loaded once here and left running -- see main.c/sfx.c if in-game music
+    // is added later, since sfx.c currently writes directly to the PSG from
+    // the 68000 side for its SFX (with no Z80 sound driver active, SGDK
+    // boots with Z80_DRIVER_NULL) and that stops being true once XGM2 stays
+    // loaded into gameplay.
+    Z80_loadDriver(Z80_DRIVER_XGM2, TRUE);
+    XGM2_play(title_music);
+
     // Debounce: the Start press that just dismissed the game-over screen
     // (see main.c) may still be physically held here -- without waiting for
     // a release first, that same held press would satisfy this wait
@@ -69,6 +77,12 @@ void title_run(void)
         SYS_doVBlankProcess();
     while (!(JOY_readJoypad(JOY_1) & BUTTON_START))
         SYS_doVBlankProcess();
+
+    // Fade the music out over the same span as the screen's own fade-out
+    // below -- XGM2_fadeOutAndStop() is driven by the Z80 in the background
+    // (not blocking like PAL_fadeOutAll()'s synchronous call), so the two
+    // run concurrently and finish at roughly the same time.
+    XGM2_fadeOutAndStop(FADE_FRAMES);
 
     PAL_fadeOutAll(FADE_FRAMES, FALSE);
 
