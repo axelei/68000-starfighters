@@ -3,6 +3,8 @@
 
 #include <genesis.h>
 
+#include "settings.h"
+
 // Hardware palette assignments (4 palettes total, 16 colors each).
 #define PAL_SHIP  PAL0
 #define PAL_ENEMY PAL1

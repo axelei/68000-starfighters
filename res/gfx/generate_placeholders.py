@@ -61,7 +61,14 @@ def player_ship():
     pal[2] = (235, 235, 245)   # nose highlight
     pal[3] = (40, 120, 180)    # engine glow accents
     pal[4] = (200, 30, 30)     # HUD separator line (red)
-    pal[5] = (0, 0, 0)         # opaque black text background (see banner_font())
+    # Opaque black text background (see banner_font()) -- deliberately (1,1,1),
+    # not literally (0,0,0)/TRANSPARENT: this is the color that actually lands
+    # in PAL0 at runtime (loaded from this palette, not banner_font.png's own),
+    # and some tools/paths along the way key off of "is this pixel/color the
+    # same as the designated transparent one" rather than the raw index, which
+    # was letting text backgrounds fall through to transparent instead of
+    # opaque black. (1,1,1) still quantizes to solid black on real hardware.
+    pal[5] = (1, 1, 1)
     pal[15] = (255, 255, 255) # HUD font ink
 
     def draw(lean):
@@ -450,7 +457,10 @@ def banner_font():
     FONT_LEN = 96
     w = h = 8
     pal = [TRANSPARENT] * 16
-    pal[5] = (0, 0, 0)
+    # (1,1,1), not (0,0,0) -- see player_ship()'s pal[5] (the palette actually
+    # loaded onto PAL0 at runtime): keeping it distinct from TRANSPARENT here
+    # too so this PNG's own tile data is consistent with that reasoning.
+    pal[5] = (1, 1, 1)
     pal[15] = (255, 255, 255)
 
     font_path = os.path.join(os.path.dirname(__file__), "fonts", "master_512.ttf")

@@ -28,6 +28,7 @@ static u16 wavesCleared;
 static u16 clearDelayTimer;   // >0 while waiting to spawn the next wave
 static u16 announceTimer;     // >0 while the "WAVE N" banner is showing
 static bool waveSpawnPending;  // enemies for waveIndex haven't been spawned yet
+static bool anyWaveSpawned;    // true once spawnWave() has run at least once this game
 
 static bool isSpecialSlot(const WaveDef *wave, u16 row, u16 col)
 {
@@ -86,6 +87,8 @@ static void spawnWave(u16 index)
             spawnIndex++;
         }
     }
+
+    anyWaveSpawned = TRUE;
 }
 
 // Only shows the "WAVE N" banner -- the actual enemies don't swoop in until
@@ -105,11 +108,12 @@ static void startWave(u16 index)
 
 void formation_init(void)
 {
-    waveIndex = 0;
+    waveIndex = DEBUG_START_WAVE;
     wavesCleared = 0;
     clearDelayTimer = 0;
     announceTimer = 0;
     waveSpawnPending = FALSE;
+    anyWaveSpawned = FALSE;
     startWave(waveIndex);
 }
 
@@ -153,4 +157,9 @@ void formation_update(void)
 u16 formation_wavesCleared(void)
 {
     return wavesCleared;
+}
+
+bool formation_enemiesSpawned(void)
+{
+    return anyWaveSpawned;
 }

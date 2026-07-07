@@ -20,13 +20,10 @@ int main(bool hardReset)
     SPR_init();
     JOY_init();
 
-    // Replaces SGDK's default font for the whole game: its tiles have a
-    // transparent background behind the ink, so text never has a real
-    // opaque backing, just whatever happens to be underneath. This one has
-    // an opaque black background baked into every glyph tile instead (see
-    // generate_placeholders.py's banner_font()), so VDP_drawText always
-    // shows solid black immediately behind each character without needing
-    // a separate background rectangle painted under a whole block of text.
+    // Covers the very first title screen's "PRESS START" (see title_run()),
+    // drawn before terrain_init() has run even once this session. Every
+    // title screen/round after this one is covered by the reload inside the
+    // loop below instead -- see the comment there for why both are needed.
     VDP_loadFont(&banner_font_tileset, CPU);
 
     // HUD/menu text goes on the WINDOW plane, not the default (BG_A) text
@@ -58,6 +55,19 @@ int main(bool hardReset)
         // scroll position for the new game and because title_run() just drew
         // the logo over part of BG_A's tilemap.
         terrain_init();
+
+        // Must come after terrain_init(): its VDP_setPlaneSize() call shifts
+        // where the map/table area of VRAM starts, and SGDK detects that and
+        // automatically reloads its own *default* font (transparent
+        // background) at the font's new VRAM location -- silently
+        // overwriting whatever font was loaded before, including this one.
+        // Loading ours here, after that shift has already happened, makes
+        // sure it's the one still in VRAM once gameplay starts. See
+        // generate_placeholders.py's banner_font() for why this one has an
+        // opaque black background baked into every glyph tile instead of a
+        // transparent one.
+        VDP_loadFont(&banner_font_tileset, CPU);
+
         bullets_init();
         enemies_init();
         powerups_init();

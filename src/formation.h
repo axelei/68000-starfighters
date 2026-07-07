@@ -17,4 +17,11 @@ void formation_update(void);
 // How many waves the player has fully cleared so far this game.
 u16 formation_wavesCleared(void);
 
+// True once the first wave's enemies have actually been spawned (i.e. the
+// initial "WAVE 1" announcement has finished) -- see turret.c's trySpawn(),
+// which must not start placing ground turrets before then: with zero
+// enemies on screen yet, the "formation thinned out" eligibility check would
+// otherwise look identical to a genuinely cleared wave.
+bool formation_enemiesSpawned(void);
+
 #endif // FORMATION_H

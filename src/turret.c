@@ -7,6 +7,7 @@
 #include "explosion.h"
 #include "enemy.h"
 #include "terrain.h"
+#include "formation.h"
 #include "sfx.h"
 
 // A clump is a spawn candidate once it's this close to scrolling into view
@@ -147,6 +148,12 @@ static void trySpawn(void)
 {
     // Never more than MAX_TURRETS at a time.
     if (countActive() >= MAX_TURRETS)
+        return;
+    // Before the first wave's enemies have actually spawned, countActive()
+    // reads as 0 -- indistinguishable from a genuinely thinned-out formation
+    // -- which would otherwise let turrets appear during the opening "WAVE 1"
+    // announcement.
+    if (!formation_enemiesSpawned())
         return;
     if (enemies_countSmall() > 0 && enemies_countActive() >= TURRET_ELIGIBLE_ENEMY_COUNT)
         return;

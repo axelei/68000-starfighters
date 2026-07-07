@@ -56,7 +56,7 @@ static void respawn(void)
 
 void player_init(void)
 {
-    player.lives = STARTING_LIVES;
+    player.lives = DEBUG_STARTING_LIVES > 0 ? DEBUG_STARTING_LIVES : STARTING_LIVES;
     // Low priority, like every other gameplay sprite (enemies/bullets/
     // turrets/explosions/powerups): terrain and starfield are both low
     // priority too, so this doesn't change how the ship layers against them
@@ -185,6 +185,8 @@ AABB player_getBounds(void)
 
 void player_kill(void)
 {
+    if (DEBUG_INVULNERABLE)
+        return;
     if (player.state != PLAYER_ALIVE || player.invulnTimer > 0)
         return;
 
