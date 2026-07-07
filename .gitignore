@@ -56,6 +56,7 @@ dkms.conf
 
 # Project-specific: SGDK build output and generated files
 out/
+__pycache__/
 res/resources.h
 res/resources.rs
 src/boot/

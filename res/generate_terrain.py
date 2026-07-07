@@ -49,7 +49,9 @@ def gen_terrain_map(rnd):
         ox = min(cx + rnd.randrange(CLUMP_SPACING - w), VISIBLE_COLS - w)
         oy = rnd.randrange(BAND_ROWS - h)
 
-        cells = [0] * (CLUMP_MAX_SIZE * CLUMP_MAX_SIZE)
+        # Exactly w*h values, no padding -- the decoder in terrain.c knows
+        # to stop once it has produced w*h cells (see TerrainMapClump).
+        cells = [0] * (w * h)
         for dy in range(h):
             for dx in range(w):
                 corner = (dx == 0 or dx == w - 1) and (dy == 0 or dy == h - 1)
@@ -94,18 +96,19 @@ def emit_header(terrainMaps, starfieldMaps):
     lines.append(f"#define TERRAIN_MAP_BAND_ROWS {BAND_ROWS}")
     lines.append(f"#define TERRAIN_MAP_COLS      {VISIBLE_COLS}")
     lines.append(f"#define TERRAIN_MAP_ANCHORS   {ANCHORS_PER_BAND}")
-    lines.append(f"#define TERRAIN_MAP_CLUMP_CELLS ({CLUMP_MAX_SIZE} * {CLUMP_MAX_SIZE})")
     lines.append(f"#define TERRAIN_MAP_COUNT     {TERRAIN_MAP_COUNT}")
     lines.append(f"#define STARFIELD_MAP_COUNT   {STARFIELD_MAP_COUNT}")
     lines.append(f"#define STARFIELD_MAP_MAX_STARS {STARFIELD_MAP_MAX_STARS}")
     lines.append("")
-    lines.append("// tileW == 0 means this anchor rolled empty (see terrain.c).")
-    lines.append("// cells[] is row-major within the tileW x tileH box (only the first")
-    lines.append("// tileW*tileH entries are meaningful); 0 = gap, else tile variant + 1.")
+    lines.append("// tileW == 0 means this anchor rolled empty (see terrain.c). Otherwise")
+    lines.append("// cells holds exactly tileW*tileH row-major values, 0 = gap, else tile")
+    lines.append("// variant + 1 -- stored at its exact size (no fixed-box padding: an RLE")
+    lines.append("// encoding was tried here and measured *worse* than this, since these")
+    lines.append("// values are close to uniformly random -- see git history if revisiting).")
     lines.append("typedef struct")
     lines.append("{")
     lines.append("    u8 tileX, tileY, tileW, tileH;")
-    lines.append("    u8 cells[TERRAIN_MAP_CLUMP_CELLS];")
+    lines.append("    const u8 *cells;")
     lines.append("} TerrainMapClump;")
     lines.append("")
     lines.append("typedef struct")
@@ -125,17 +128,27 @@ def emit_header(terrainMaps, starfieldMaps):
     lines.append("} StarfieldMap;")
     lines.append("")
 
+    # Each non-empty clump's cells get their own exactly-sized array (no
+    # fixed-box padding) -- emitted before terrainMaps so it can point at them.
+    for mi, clumps in enumerate(terrainMaps):
+        for ai, c in enumerate(clumps):
+            if c is None:
+                continue
+            _, _, _, _, cells = c
+            cell_str = ", ".join(str(v) for v in cells)
+            lines.append(f"static const u8 terrainCells_{mi}_{ai}[] = {{{cell_str}}};")
+    lines.append("")
+
     lines.append("static const TerrainMap terrainMaps[TERRAIN_MAP_COUNT] =")
     lines.append("{")
-    for clumps in terrainMaps:
+    for mi, clumps in enumerate(terrainMaps):
         lines.append("    {{")
-        for c in clumps:
+        for ai, c in enumerate(clumps):
             if c is None:
-                lines.append("        { 0, 0, 0, 0, {0} },")
+                lines.append("        { 0, 0, 0, 0, NULL },")
             else:
-                ox, oy, w, h, cells = c
-                cell_str = ", ".join(str(v) for v in cells)
-                lines.append(f"        {{ {ox}, {oy}, {w}, {h}, {{{cell_str}}} }},")
+                ox, oy, w, h, _ = c
+                lines.append(f"        {{ {ox}, {oy}, {w}, {h}, terrainCells_{mi}_{ai} }},")
         lines.append("    }},")
     lines.append("};")
     lines.append("")
