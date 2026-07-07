@@ -13,8 +13,8 @@ Bullet enemyBullets[MAX_ENEMY_BULLETS];
 // otherwise give each of the up to MAX_PLAYER_BULLETS/MAX_ENEMY_BULLETS
 // sprites its own private VRAM copy of the same single tile.
 // Turret now needs 12 tiles (3 anims x 4 tiles, see turret.c) starting at
-// +192, so this must start at +204 or later to avoid overlapping it.
-#define BULLET_TILE_BASE (TILE_USER_INDEX + 210)
+// +216, so this must start at +228 or later to avoid overlapping it.
+#define BULLET_TILE_BASE (TILE_USER_INDEX + 228)
 
 static u16 playerBulletTile;
 static u16 enemyBulletTile;

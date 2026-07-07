@@ -38,7 +38,23 @@ typedef enum
 #define WAVER_GRID_COLS      6
 #define WAVER_SUBGROUP_SIZE  (WAVER_GRID_ROWS * WAVER_GRID_COLS) // 24
 #define WAVER_SUBGROUP_COUNT 3
-#define WAVER_TOTAL_COUNT    (WAVER_SUBGROUP_SIZE * WAVER_SUBGROUP_COUNT)
+
+// Two distinct inter-wave formation shapes, alternated automatically each
+// time enemy_spawnWaverFormation() is called (see currentWaverShape in
+// enemy.c) -- GRID_WEAVE is the original top-down weaving grid above;
+// SIDE_DIVE is rows of 2 enemies entering fast from the left or right edge
+// of the playfield and curving into a steep dive off the bottom. Both share
+// the same batch/sequencing machinery (isWaver, waverBatchesSpawned, etc.),
+// just with different spawn layouts and per-frame motion -- see
+// spawnNextWaverSubgroup() and the ENEMY_STATE_WAVING branch in
+// enemies_update().
+typedef enum
+{
+    WAVER_SHAPE_GRID_WEAVE,
+    WAVER_SHAPE_SIDE_DIVE,
+} WaverShape;
+
+#define WAVER_SHAPE_COUNT 2
 
 typedef enum
 {
@@ -56,11 +72,13 @@ typedef struct
     EnemyLifeState state;
     fix16 x;
     fix16 y;
-    fix16 vx; // path velocity, used while ENTERING/DIVING_OUT
+    fix16 vx; // path velocity, used while ENTERING/DIVING_OUT/SIDE_DIVE's sweep-in phase
     fix16 vy;
     s16 slotX;
     s16 slotY;
     u16 enterTimer; // frame counter within the current ENTERING/DIVING_* path
+    u16 enterDuration; // frames the current ENTERING swoop takes to finish -- ENTER_DURATION by
+                        // default (see enemy_spawn()), overridden for a faster SIDE_DIVE sweep-in
     s16 startDelay; // frames to wait, hidden, before entrance begins
     s16 hp;
     s16 maxHp;
@@ -73,6 +91,12 @@ typedef struct
     s16 groupOffsetX;      // waver kinds only: fixed horizontal offset from its batch's shared path position
                            // (the row's *vertical* offset only matters at spawn -- it's baked into the
                            // initial y once, and every WAVING enemy descends at the same constant rate)
+    s16 waverRowPhase;     // GRID_WEAVE only: this row's offset into the shared path clock, relative
+                           // to its OWN reveal time rather than the batch's spawn time (negative --
+                           // cancels out the startDelay frames the shared clock already ticked
+                           // through while this row was still hidden) -- see ENEMY_STATE_WAVING in
+                           // enemy.c for why rows weave independently instead of moving as one rigid
+                           // block, and why this can't just be the row index times a small step
 } Enemy;
 
 extern Enemy enemies[MAX_ENEMIES];
@@ -116,9 +140,15 @@ bool enemies_waverFormationDone(void);
 
 // How many waver enemies were killed (not merely deactivated by flying off
 // screen) across every batch since the last enemy_spawnWaverFormation()
-// call -- formation.c compares this to WAVER_TOTAL_COUNT to award a
+// call -- formation.c compares this to enemies_waverTotalCount() to award a
 // perfect-clear bonus only if every one of them was actually shot down.
 u16 enemies_waverKillCount(void);
+
+// Total enemies across every batch of the current inter-wave formation --
+// depends on which WaverShape got picked (GRID_WEAVE and SIDE_DIVE spawn
+// different numbers per batch), so this is a function rather than a fixed
+// macro like the old WAVER_TOTAL_COUNT.
+u16 enemies_waverTotalCount(void);
 
 // True for ENEMY_KIND_WAVER_A/B/C -- see collision.c's ram-death rule (as
 // fragile as BEE/SPECIAL, dies on contact with the player too).

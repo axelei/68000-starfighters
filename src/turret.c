@@ -41,7 +41,9 @@ Turret turrets[MAX_TURRETS];
 // Every turret looks identical (idle/firing/flash), so its tile graphics
 // are uploaded to VRAM exactly once here rather than once per active
 // turret -- same reasoning as enemy.c/bullet.c/explosion.c.
-#define TURRET_TILE_BASE (TILE_USER_INDEX + 192)
+// Explosion now needs 16 tiles (4 frames x 4 tiles, see explosion.c) starting
+// at +200, so this must start at +216 or later to avoid overlapping it.
+#define TURRET_TILE_BASE (TILE_USER_INDEX + 216)
 
 static u16 idleTile;
 static u16 firingTile;

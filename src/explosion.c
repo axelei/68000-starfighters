@@ -25,7 +25,10 @@ static Explosion explosions[MAX_EXPLOSIONS];
 // tile index" at the shared block for whichever frame it's currently on
 // (see SPR_setVRAMTileIndex calls below) rather than using SPR_setFrame,
 // which would try to re-upload tile data.
-#define EXPLOSION_TILE_BASE (TILE_USER_INDEX + 176)
+// Enemy tiles (see enemy.c's loadSharedTiles) now run bee(8)+special(8)+
+// big(32)+waverA/B/C(8 each = 24) = 72 tiles starting at +128, so this must
+// start at +200 or later to avoid overlapping them.
+#define EXPLOSION_TILE_BASE (TILE_USER_INDEX + 200)
 
 static u16 frameTile[EXPLOSION_FRAME_COUNT];
 

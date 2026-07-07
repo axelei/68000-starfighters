@@ -103,7 +103,11 @@ static void applyStarfieldMap(u16 bandRow)
     for (u16 i = 0; i < map->count; i++)
     {
         const StarfieldStar *s = &map->stars[i];
-        u16 tile = TILE_ATTR_FULL(PAL_ENVIRONMENT, FALSE, FALSE, FALSE, STARFIELD_BASE_TILE + (s->variant - 1));
+        // s->variant is already the tile-sheet index (1=dim, 2=bright --
+        // see generate_terrain.py's gen_starfield_map()), unlike terrain's
+        // `cell` field which reserves 0 for "gap" and needs a -1. Tile 0
+        // here is genuinely empty space, never referenced.
+        u16 tile = TILE_ATTR_FULL(PAL_ENVIRONMENT, FALSE, FALSE, FALSE, STARFIELD_BASE_TILE + s->variant);
         VDP_setTileMapXY(BG_B, tile, s->x, bandRow + s->y);
     }
 }

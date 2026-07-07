@@ -52,8 +52,14 @@ Enemy enemies[MAX_ENEMIES];
 // appearing.
 #define WAVER_BATCH_GAP_FRAMES (INTERWAVE_ENTRY_STAGGER_SECONDS * 60)
 #define WAVER_COL_SPACING 18 // px between column centers -- edges just touch (16px sprite), no overlap
-#define WAVER_ROW_SPACING 18
-#define WAVER_ROW_STAGGER_FRAMES 40 // ~1/3s between each row starting to scroll in
+#define WAVER_ROW_SPACING 30
+#define WAVER_ROW_STAGGER_FRAMES 90 // 1.5s between each row starting to scroll in
+
+// Per-row offset into the shared path clock (see waverRowPhase in enemy.h)
+// -- each row samples waverPaths this many frames "ahead" of the row above
+// it, so the batch ripples through the same path shape row by row instead
+// of every row weaving in lockstep.
+#define WAVER_ROW_PHASE_FRAMES 16
 #define WAVER_DESCEND_SPEED FIX16(1.5) // must match DESCEND_SPEED_PX in generate_interwave.py
 
 // Wavers only rarely fire back -- a long cooldown means any single one
@@ -62,6 +68,26 @@ Enemy enemies[MAX_ENEMIES];
 #define WAVER_FIRE_COOLDOWN_RANGE 180 // up to +3s more
 #define WAVER_BULLET_SPEED FIX16(1.6)
 #define WAVER_AIM_JITTER    FIX16(0.6)
+
+// SIDE_DIVE inter-wave shape (see WaverShape in enemy.h): rows of 2 enemies
+// (offset by SIDE_DIVE_COL_GAP) enter from genuinely off-screen (past
+// SCREEN_W or below 0, not just past the playfield's internal
+// PLAY_AREA_X_MIN/MAX margins -- those are still on screen) on the left or
+// right -- side chosen per row. The sweep-in reuses the standard
+// ENEMY_STATE_ENTERING path every other entrance in this file already goes
+// through (enemy_spawn()'s vx/vy, linearly interpolated to an exact slot and
+// snapped there -- see e->enterDuration in enemy.h), just with a shorter
+// duration than the default ENTER_DURATION so it reads as "quickly". Once
+// the sweep lands exactly on its slot, it switches to ENEMY_STATE_WAVING for
+// a steep constant vertical dive off the bottom. Rows enter in quick
+// succession (SIDE_DIVE_ROW_STAGGER_FRAMES apart) via the same startDelay
+// mechanism as the grid-weave rows.
+#define SIDE_DIVE_ROW_COUNT          8
+#define SIDE_DIVE_SUBGROUP_SIZE      (SIDE_DIVE_ROW_COUNT * 2) // 16
+#define SIDE_DIVE_COL_GAP            18 // px between the two members of a row
+#define SIDE_DIVE_ROW_STAGGER_FRAMES 20 // ~1/3s between each row starting
+#define SIDE_DIVE_START_Y            24 // near the top, not mid-screen -- leaves most of the screen for the dive
+#define SIDE_DIVE_DIVE_VY       FIX16(1.8) // steep constant descent once the sweep finishes
 
 // BEE/SPECIAL only: caps how many can be away from their formation slot
 // (diving out and/or swooping back in) at the same time.
@@ -80,6 +106,12 @@ static u16 currentWaverClock;
 // each time a batch spawns, independent of ENEMY_KIND_WAVER_A/B/C (which only
 // pick the sprite/color, not the movement).
 static u8 currentWaverPathId;
+
+// Which formation shape the current/most-recent inter-wave formation is
+// using (see WaverShape in enemy.h) -- alternated each time
+// enemy_spawnWaverFormation() runs (see interwaveFormationCount below).
+static WaverShape currentWaverShape;
+static u16 interwaveFormationCount;
 
 // Inter-wave formation sequencing state -- see enemy_spawnWaverFormation()
 // and updateWaverFormationSequencing().
@@ -170,6 +202,8 @@ void enemies_init(void)
 
     currentWaverClock = 0;
     currentWaverPathId = 0;
+    currentWaverShape = WAVER_SHAPE_GRID_WEAVE;
+    interwaveFormationCount = 0;
     waverBatchesSpawned = 0;
     waverGapTimer = 0;
     waverFormationActive = FALSE;
@@ -291,6 +325,7 @@ Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY,
         e->slotX = slotX;
         e->slotY = slotY;
         e->enterTimer = 0;
+        e->enterDuration = ENTER_DURATION;
         e->startDelay = delay;
         e->maxHp = maxHpForKind(kind);
         e->hp = e->maxHp;
@@ -380,6 +415,12 @@ u16 enemies_waverKillCount(void)
     return waverKillCount;
 }
 
+u16 enemies_waverTotalCount(void)
+{
+    u16 subgroupSize = (currentWaverShape == WAVER_SHAPE_SIDE_DIVE) ? SIDE_DIVE_SUBGROUP_SIZE : WAVER_SUBGROUP_SIZE;
+    return subgroupSize * WAVER_SUBGROUP_COUNT;
+}
+
 AABB enemy_getBounds(const Enemy *e)
 {
     AABB box = {F16_toInt(e->x), F16_toInt(e->y), enemy_widthForKind(e->kind), enemy_heightForKind(e->kind)};
@@ -421,7 +462,7 @@ void enemies_update(void)
             e->x += e->vx;
             e->y += e->vy;
             e->enterTimer++;
-            if (e->enterTimer >= ENTER_DURATION)
+            if (e->enterTimer >= e->enterDuration)
             {
                 e->x = FIX16(e->slotX);
                 e->y = FIX16(e->slotY);
@@ -432,9 +473,13 @@ void enemies_update(void)
                     activeDivers--;
                 }
 
-                // Waver kinds never reach this state -- they go straight to
-                // ENEMY_STATE_WAVING from spawn (see enemy_spawnWaverFormation()).
-                e->state = ENEMY_STATE_IN_FORMATION;
+                // GRID_WEAVE wavers never reach this state -- they go straight
+                // to ENEMY_STATE_WAVING from spawn (see spawnNextGridWeaveSubgroup()).
+                // SIDE_DIVE wavers do enter through here (see
+                // spawnNextSideDiveSubgroup()): once their sweep-in lands
+                // exactly on its slot, switch to the dive instead of
+                // pretending they're part of a static formation.
+                e->state = e->isWaver ? ENEMY_STATE_WAVING : ENEMY_STATE_IN_FORMATION;
             }
         }
         else if (e->state == ENEMY_STATE_IN_FORMATION)
@@ -522,14 +567,31 @@ void enemies_update(void)
         }
         else if (e->state == ENEMY_STATE_WAVING)
         {
-            u16 clock = currentWaverClock;
-            if (clock >= WAVER_PATH_LENGTH)
-                clock = WAVER_PATH_LENGTH - 1;
+            if (currentWaverShape == WAVER_SHAPE_SIDE_DIVE)
+            {
+                // The sweep-in already happened during ENEMY_STATE_ENTERING
+                // (see spawnNextSideDiveSubgroup()/enemy_spawn()) and landed
+                // exactly on its slot -- this is just the steep drop after.
+                e->y += SIDE_DIVE_DIVE_VY;
+            }
+            else
+            {
+                // Signed: e->waverRowPhase is negative (see
+                // spawnNextGridWeaveSubgroup()), and right at reveal time
+                // currentWaverClock may be a frame or two short of/past
+                // exactly cancelling it out, so this must be able to dip
+                // below 0 (clamped) as well as exceed WAVER_PATH_LENGTH.
+                s16 clock = (s16) currentWaverClock + e->waverRowPhase;
+                if (clock < 0)
+                    clock = 0;
+                else if (clock >= WAVER_PATH_LENGTH)
+                    clock = WAVER_PATH_LENGTH - 1;
 
-            s16 anchorX = (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2;
+                s16 anchorX = (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2;
 
-            e->x = FIX16(anchorX + waverPaths[currentWaverPathId][clock] + e->groupOffsetX);
-            e->y += WAVER_DESCEND_SPEED;
+                e->x = FIX16(anchorX + waverPaths[currentWaverPathId][clock] + e->groupOffsetX);
+                e->y += WAVER_DESCEND_SPEED;
+            }
 
             if (F16_toInt(e->y) > SCREEN_H)
             {
@@ -601,9 +663,9 @@ static s16 gridOffset(u16 index, u16 count, s16 spacing)
 // waverFormationKind. Each row appears WAVER_ROW_STAGGER_FRAMES after the
 // previous one (via startDelay), but once a member is actually revealed it
 // goes straight into ENEMY_STATE_WAVING -- no entrance flight that settles
-// into a neat grid first, it's already riding the path (at whatever point
-// in it currentWaverClock has already reached) as it scrolls into view.
-static void spawnNextWaverSubgroup(void)
+// into a neat grid first, it's already riding the path as it scrolls into
+// view.
+static void spawnNextGridWeaveSubgroup(void)
 {
     s16 anchorX = (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2;
     s16 h = (s16) enemy_heightForKind(waverFormationKind);
@@ -613,9 +675,24 @@ static void spawnNextWaverSubgroup(void)
 
     for (u16 row = 0; row < WAVER_GRID_ROWS; row++)
     {
-        s16 rowOffset = gridOffset(row, WAVER_GRID_ROWS, WAVER_ROW_SPACING);
-        s16 startY = -h - 10 + rowOffset; // baked in once -- descend carries it forward every frame
+        // Purely additive (not gridOffset()'s symmetric-about-center spread):
+        // that formula pushed higher row indices toward/past positive Y --
+        // i.e. already inside the visible playfield -- once WAVER_ROW_SPACING
+        // grew past a few px. Stacking every row strictly further above the
+        // last guarantees all of them stay off-screen regardless of spacing.
+        s16 startY = -h - 10 - (s16) row * WAVER_ROW_SPACING;
         s16 delay = (s16) (row * WAVER_ROW_STAGGER_FRAMES);
+
+        // The shared currentWaverClock starts ticking the instant this batch
+        // spawns, but this row won't actually be revealed (and start reading
+        // it) until `delay` frames from now -- by then the clock will already
+        // read ~delay. Baking in -delay here (plus a small per-row ripple
+        // step) keeps the clock this row actually sees starting near 0 at
+        // reveal time, regardless of how long WAVER_ROW_STAGGER_FRAMES is --
+        // without it, a long enough stagger runs the clock past
+        // WAVER_PATH_LENGTH before a later row is even revealed, freezing
+        // its weave at the path's last entry from the moment it appears.
+        s16 rowPhase = (s16) ((s16) row * WAVER_ROW_PHASE_FRAMES) - delay;
 
         for (u16 col = 0; col < WAVER_GRID_COLS; col++)
         {
@@ -628,6 +705,7 @@ static void spawnNextWaverSubgroup(void)
 
             e->isWaver = TRUE;
             e->groupOffsetX = colOffset;
+            e->waverRowPhase = rowPhase;
             e->state = ENEMY_STATE_WAVING;
         }
     }
@@ -635,9 +713,79 @@ static void spawnNextWaverSubgroup(void)
     waverBatchesSpawned++;
 }
 
+// Roughly how many px/frame the ENTERING sweep should cover, regardless of
+// how far off-screen this particular row started -- entry distance varies a
+// lot (landing spot is picked independently of which edge it came from), so
+// a fixed *duration* like other entrances use would make far entries look
+// much faster than near ones. Fixing the speed and deriving the duration
+// from the actual distance keeps it consistent. Never below
+// SIDE_DIVE_MIN_SWEEP_FRAMES so a very short hop still reads as a deliberate
+// swoop rather than a snap.
+#define SIDE_DIVE_SWEEP_SPEED_PX     3
+#define SIDE_DIVE_MIN_SWEEP_FRAMES   10
+
+// Spawns exactly one batch of SIDE_DIVE_SUBGROUP_SIZE enemies of
+// waverFormationKind: SIDE_DIVE_ROW_COUNT rows of 2 side by side (offset
+// SIDE_DIVE_COL_GAP apart horizontally), each row entering together from
+// the left or right edge of the *whole screen* (chosen independently per
+// row) and staggered SIDE_DIVE_ROW_STAGGER_FRAMES apart via startDelay.
+// Every member goes through the standard ENEMY_STATE_ENTERING sweep (see
+// enemy_spawn()) at a fixed speed (SIDE_DIVE_SWEEP_SPEED_PX, duration
+// derived from actual distance -- see e->enterDuration) to its landing
+// slot, then enemies_update()'s ENTERING completion sends waver kinds into
+// ENEMY_STATE_WAVING for the steep dive instead of ENEMY_STATE_IN_FORMATION.
+static void spawnNextSideDiveSubgroup(void)
+{
+    s16 w = (s16) enemy_widthForKind(waverFormationKind);
+
+    for (u16 row = 0; row < SIDE_DIVE_ROW_COUNT; row++)
+    {
+        bool fromRight = (bool) (random() & 1);
+        s16 startX = fromRight ? (SCREEN_W + w + 10) : (-w - 10);
+        // Landing spot: somewhere inside the playfield with enough room for
+        // both members side by side, well clear of the play area edges.
+        s16 landRangeMin = PLAY_AREA_X_MIN + 10;
+        s16 landRangeMax = PLAY_AREA_X_MAX - 10 - SIDE_DIVE_COL_GAP;
+        s16 landX = landRangeMin + (s16) (random() % (u16) (landRangeMax - landRangeMin));
+        s16 startY = SIDE_DIVE_START_Y;
+        s16 delay = (s16) (row * SIDE_DIVE_ROW_STAGGER_FRAMES);
+
+        for (u16 col = 0; col < 2; col++)
+        {
+            s16 thisLandX = landX + (s16) col * SIDE_DIVE_COL_GAP;
+            s16 dist = thisLandX - startX;
+            if (dist < 0)
+                dist = -dist;
+            u16 duration = (u16) (dist / SIDE_DIVE_SWEEP_SPEED_PX);
+            if (duration < SIDE_DIVE_MIN_SWEEP_FRAMES)
+                duration = SIDE_DIVE_MIN_SWEEP_FRAMES;
+
+            Enemy *e = enemy_spawn(waverFormationKind, startX, startY, thisLandX, startY, delay);
+            if (e == NULL)
+                continue; // pool full -- shouldn't happen (see MAX_ENEMIES)
+
+            e->isWaver = TRUE;
+            e->enterDuration = duration;
+            e->vx = FIX16(thisLandX - startX) / (s16) duration;
+        }
+    }
+
+    waverBatchesSpawned++;
+}
+
+static void spawnNextWaverSubgroup(void)
+{
+    if (currentWaverShape == WAVER_SHAPE_SIDE_DIVE)
+        spawnNextSideDiveSubgroup();
+    else
+        spawnNextGridWeaveSubgroup();
+}
+
 void enemy_spawnWaverFormation(EnemyKind kind)
 {
     waverFormationKind = kind;
+    currentWaverShape = (WaverShape) (interwaveFormationCount % WAVER_SHAPE_COUNT);
+    interwaveFormationCount++;
     waverBatchesSpawned = 0;
     waverGapTimer = 0;
     waverFormationActive = TRUE;

@@ -202,7 +202,7 @@ void formation_update(void)
             inInterwave = FALSE;
             // Every waver was actually shot down (none flew off screen
             // uncontested) -- see enemy_kill()'s waverKillCount tracking.
-            if (enemies_waverKillCount() == WAVER_TOTAL_COUNT)
+            if (enemies_waverKillCount() == enemies_waverTotalCount())
                 score_addInterwavePerfectBonus();
             startWave(waveIndex);
         }
