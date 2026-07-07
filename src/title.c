@@ -78,11 +78,12 @@ void title_run(void)
 
 void title_fadeInGame(void)
 {
-    u16 combined[64];
-    memcpy(&combined[0],  palette_ship.data,  16 * sizeof(u16));
-    memcpy(&combined[16], palette_enemy.data, 16 * sizeof(u16));
-    memcpy(&combined[32], palette_pwr.data,   16 * sizeof(u16));
-    memcpy(&combined[48], palette_terra.data, 16 * sizeof(u16));
+    u16 combined[64] = {0};
+    memcpy(&combined[0],  palette_player.data,      16 * sizeof(u16));
+    memcpy(&combined[16], palette_enemy.data,       16 * sizeof(u16));
+    memcpy(&combined[32], palette_environment.data, 16 * sizeof(u16));
+    // combined[48..63] (PAL3) intentionally left black/unused -- see
+    // game.h's comment on PAL_PLAYER/PAL_ENEMY/PAL_ENVIRONMENT.
 
     PAL_fadeInAll(combined, FADE_FRAMES, FALSE);
 }

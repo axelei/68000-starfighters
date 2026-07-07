@@ -8,9 +8,10 @@
 // once, before setting up the game scene.
 void title_run(void);
 
-// Fades the screen back in (1s) using the 4 gameplay hardware palettes
-// (PAL_SHIP/PAL_ENEMY/PAL_PWR/PAL_TERRA). Call once the game scene (sprites,
-// tilemaps) is fully set up but still invisible (black) after title_run().
+// Fades the screen back in (1s) using the 3 gameplay hardware palettes
+// (PAL_PLAYER/PAL_ENEMY/PAL_ENVIRONMENT -- see game.h). Call once the game
+// scene (sprites, tilemaps) is fully set up but still invisible (black)
+// after title_run().
 void title_fadeInGame(void);
 
 #endif // TITLE_H

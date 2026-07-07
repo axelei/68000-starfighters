@@ -62,7 +62,7 @@ static u16 displayedTime = 0xFFFF;      // force first draw
 // through, so plain VDP_drawText/VDP_clearTextArea calls aren't enough.
 static void fillWindowRect(u16 x0, u16 y0, u16 x1, u16 y1)
 {
-    u16 tile = TILE_ATTR_FULL(PAL_SHIP, TRUE, FALSE, FALSE, HUD_FILL_TILE);
+    u16 tile = TILE_ATTR_FULL(PAL_PLAYER, TRUE, FALSE, FALSE, HUD_FILL_TILE);
     for (u16 y = y0; y < y1; y++)
         for (u16 x = x0; x < x1; x++)
             VDP_setTileMapXY(WINDOW, tile, x, y);
@@ -107,7 +107,7 @@ void score_init(void)
     // The panel's leftmost column is a red divider line; the rest is the
     // opaque black background (text starts one column further in, at
     // HUD_PANEL_COL0 + 1, so it never overlaps the line).
-    u16 separatorTile = TILE_ATTR_FULL(PAL_SHIP, TRUE, FALSE, FALSE, HUD_SEPARATOR_TILE);
+    u16 separatorTile = TILE_ATTR_FULL(PAL_PLAYER, TRUE, FALSE, FALSE, HUD_SEPARATOR_TILE);
     for (u16 y = 0; y < SCREEN_H_TILES; y++)
         VDP_setTileMapXY(WINDOW, separatorTile, HUD_PANEL_COL0, y);
     fillWindowRect(HUD_PANEL_COL0 + 1, 0, 40, SCREEN_H_TILES);

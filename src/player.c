@@ -67,7 +67,7 @@ void player_init(void)
     // the GAME OVER/WAVE banner and cover it. Low priority puts it below
     // that text while still above the low-priority background planes.
     if (player.sprite == NULL)
-        player.sprite = SPR_addSprite(&spr_player, 0, 0, TILE_ATTR(PAL_SHIP, FALSE, FALSE, FALSE));
+        player.sprite = SPR_addSprite(&spr_player, 0, 0, TILE_ATTR(PAL_PLAYER, FALSE, FALSE, FALSE));
     respawn();
 }
 

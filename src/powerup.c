@@ -35,7 +35,7 @@ void powerup_spawnAt(s16 x, s16 y)
         p->y = FIX16(y);
 
         if (p->sprite == NULL)
-            p->sprite = SPR_addSprite(def, x, y, TILE_ATTR(PAL_PWR, FALSE, FALSE, FALSE));
+            p->sprite = SPR_addSprite(def, x, y, TILE_ATTR(PAL_PLAYER, FALSE, FALSE, FALSE));
         else
         {
             // This pool slot may have last shown the other powerup type --

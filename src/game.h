@@ -5,11 +5,15 @@
 
 #include "settings.h"
 
-// Hardware palette assignments (4 palettes total, 16 colors each).
-#define PAL_SHIP  PAL0
-#define PAL_ENEMY PAL1
-#define PAL_PWR   PAL2
-#define PAL_TERRA PAL3
+// Hardware palette assignments, consolidated to 3 groups that each use all
+// 16 slots (transparent/black/white/gray + shades of that group's colors --
+// see generate_placeholders.py's module docstring). PAL3 is currently free.
+// Title's own palette (title.c) briefly borrows PAL0 before
+// title_fadeInGame() overwrites it with PAL_PLAYER's real colors, once
+// gameplay actually starts.
+#define PAL_PLAYER      PAL0 // ship, bullets (player's), HUD, powerups
+#define PAL_ENEMY       PAL1 // bee/special/big, turret, explosion, enemy bullet, wavers
+#define PAL_ENVIRONMENT PAL2 // terrain + starfield
 
 // HUD panel: a static column on the right of the screen (see score.c), out
 // of the playfield the player/enemies move within.
@@ -29,12 +33,10 @@
 
 #define MAX_PLAYER_BULLETS 16
 #define MAX_ENEMY_BULLETS  24
-// Headroom above WAVER_TOTAL_COUNT (enemy.h): enemy_spawnWaverFormation()
-// pre-spawns every inter-wave sub-block up front (most sitting HIDDEN with a
-// long startDelay until their turn), so the *software* pool needs a slot for
-// all of them at once even though only one sub-block's sprites are ever
-// actually visible on the VDP at a time -- see WAVER_SUBGROUP_COUNT's
-// comment for why that matters for the Genesis's 80-sprite hardware limit.
+// Comfortable headroom above the biggest wave/inter-wave batch (see
+// enemy.h's WAVER_SUBGROUP_SIZE) -- batches are spawned one at a time,
+// reusing freed slots, specifically to stay well under the Genesis's
+// 80-ever-allocated-sprite-object limit (see WAVER_SUBGROUP_COUNT's comment).
 #define MAX_ENEMIES 48
 #define MAX_POWERUPS        4
 

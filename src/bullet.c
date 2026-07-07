@@ -84,7 +84,7 @@ static bool spawn(Bullet *pool, u16 count, const SpriteDefinition *def, u16 pal,
 
 bool bullet_spawn_player(fix16 x, fix16 y, fix16 vx, fix16 vy)
 {
-    return spawn(playerBullets, MAX_PLAYER_BULLETS, &spr_bullet_player, PAL_SHIP, playerBulletTile, x, y, vx, vy);
+    return spawn(playerBullets, MAX_PLAYER_BULLETS, &spr_bullet_player, PAL_PLAYER, playerBulletTile, x, y, vx, vy);
 }
 
 bool bullet_spawn_enemy(fix16 x, fix16 y, fix16 vx, fix16 vy)

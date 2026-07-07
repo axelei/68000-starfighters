@@ -85,7 +85,7 @@ static void applyTerrainMap(u16 bandIndex, u16 bandRow)
                 if (cell == 0) // gap -- irregular blob edge (see the generator)
                     continue;
 
-                u16 tile = TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, TERRAIN_BASE_TILE + (cell - 1));
+                u16 tile = TILE_ATTR_FULL(PAL_ENVIRONMENT, FALSE, FALSE, FALSE, TERRAIN_BASE_TILE + (cell - 1));
                 VDP_setTileMapXY(BG_A, tile, clump->tileX + dx, clump->tileY + dy);
             }
         }
@@ -103,7 +103,7 @@ static void applyStarfieldMap(u16 bandRow)
     for (u16 i = 0; i < map->count; i++)
     {
         const StarfieldStar *s = &map->stars[i];
-        u16 tile = TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, STARFIELD_BASE_TILE + (s->variant - 1));
+        u16 tile = TILE_ATTR_FULL(PAL_ENVIRONMENT, FALSE, FALSE, FALSE, STARFIELD_BASE_TILE + (s->variant - 1));
         VDP_setTileMapXY(BG_B, tile, s->x, bandRow + s->y);
     }
 }
