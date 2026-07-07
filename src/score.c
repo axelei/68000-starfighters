@@ -22,6 +22,8 @@
 #define LIVES_HUD_Y 6
 #define WAVE_HUD_X  (HUD_PANEL_COL0 + 1)
 #define WAVE_HUD_Y  10
+#define TIME_HUD_X  (HUD_PANEL_COL0 + 1)
+#define TIME_HUD_Y  14
 
 // The WINDOW plane's vertical position can only band full rows from the top
 // or bottom edge -- never an arbitrary rectangle, and never a subset of rows
@@ -47,6 +49,7 @@ static u32 score;
 static u32 displayedScore = 0xFFFFFFFF; // force first draw
 static u8 displayedLives = 0xFF;        // force first draw
 static u16 displayedWave = 0xFFFF;      // force first draw
+static u16 displayedTime = 0xFFFF;      // force first draw
 
 // Paints a WINDOW-plane rectangle solid black using an opaque fill tile --
 // blank (index 0) tiles are transparent on Genesis hardware and would let
@@ -107,6 +110,7 @@ void score_init(void)
     VDP_drawText("SCORE", SCORE_HUD_X, SCORE_HUD_Y);
     VDP_drawText("LIVES", LIVES_HUD_X, LIVES_HUD_Y);
     VDP_drawText("WAVE", WAVE_HUD_X, WAVE_HUD_Y);
+    VDP_drawText("TIME", TIME_HUD_X, TIME_HUD_Y);
 }
 
 void score_addKill(EnemyKind kind)
@@ -159,6 +163,16 @@ void score_hud_update(void)
         char buf[4];
         uintToStr(displayedWave, buf, 2);
         VDP_drawText(buf, WAVE_HUD_X, WAVE_HUD_Y + 1);
+    }
+
+    u16 secondsLeft = formation_waveSecondsLeft();
+    if (secondsLeft != displayedTime)
+    {
+        displayedTime = secondsLeft;
+
+        char buf[4];
+        uintToStr(displayedTime, buf, 2);
+        VDP_drawText(buf, TIME_HUD_X, TIME_HUD_Y + 1);
     }
 }
 

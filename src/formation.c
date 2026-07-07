@@ -23,12 +23,21 @@
 // How long the "WAVE N" banner stays up once a wave starts.
 #define WAVE_ANNOUNCE_FRAMES 120 // 2s at 60fps
 
+// If a wave's enemies are still around after this long, they all dive off
+// at once (see enemies_forceDiveAllOut()) and the next wave starts without
+// waiting for the player to clear the rest -- keeps a wave from stalling
+// forever if the player just avoids the remaining enemies. Length itself
+// (WAVE_TIME_LIMIT_SECONDS) lives in settings.h.
+#define WAVE_TIME_LIMIT_FRAMES (WAVE_TIME_LIMIT_SECONDS * 60)
+
 static u16 waveIndex;       // which WaveDef (mod WAVE_COUNT) is currently in play
 static u16 wavesCleared;
 static u16 clearDelayTimer;   // >0 while waiting to spawn the next wave
 static u16 announceTimer;     // >0 while the "WAVE N" banner is showing
 static bool waveSpawnPending;  // enemies for waveIndex haven't been spawned yet
 static bool anyWaveSpawned;    // true once spawnWave() has run at least once this game
+static u16 waveTimer;         // frames left before this wave's enemies are forced out
+static bool waveForcedOut;    // true once the forced dive-out has fired for this wave
 
 static bool isSpecialSlot(const WaveDef *wave, u16 row, u16 col)
 {
@@ -89,6 +98,8 @@ static void spawnWave(u16 index)
     }
 
     anyWaveSpawned = TRUE;
+    waveTimer = WAVE_TIME_LIMIT_FRAMES;
+    waveForcedOut = FALSE;
 }
 
 // Only shows the "WAVE N" banner -- the actual enemies don't swoop in until
@@ -114,6 +125,8 @@ void formation_init(void)
     announceTimer = 0;
     waveSpawnPending = FALSE;
     anyWaveSpawned = FALSE;
+    waveTimer = 0;
+    waveForcedOut = FALSE;
     startWave(waveIndex);
 }
 
@@ -147,6 +160,18 @@ void formation_update(void)
         return;
     }
 
+    if (!waveForcedOut && waveTimer > 0)
+    {
+        waveTimer--;
+        if (waveTimer == 0)
+        {
+            // Ran out the clock -- send everyone left off screen for good
+            // (no score/powerups) instead of waiting on the player.
+            enemies_forceDiveAllOut();
+            waveForcedOut = TRUE;
+        }
+    }
+
     if (enemies_countActive() == 0)
     {
         wavesCleared++;
@@ -162,4 +187,12 @@ u16 formation_wavesCleared(void)
 bool formation_enemiesSpawned(void)
 {
     return anyWaveSpawned;
+}
+
+// Seconds left before this wave's enemies get forced out -- see
+// WAVE_TIME_LIMIT_FRAMES. Rounds up so it reads as a whole "60" from the
+// very first frame rather than dropping to "59" immediately.
+u16 formation_waveSecondsLeft(void)
+{
+    return (waveTimer + 59) / 60;
 }

@@ -180,6 +180,7 @@ Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY,
         e->hp = e->maxHp;
         e->flashTimer = 0;
         e->diving = FALSE;
+        e->forcedOut = FALSE;
         e->diveCooldown = randomCooldown(DIVE_COOLDOWN_MIN, DIVE_COOLDOWN_RANGE);
         e->fireCooldown = randomCooldown(BIG_FIRE_COOLDOWN_MIN, BIG_FIRE_COOLDOWN_RANGE);
 
@@ -364,23 +365,38 @@ void enemies_update(void)
 
             if (F16_toInt(e->y) > SCREEN_H)
             {
-                // Passed off the bottom of the screen -- reappear from
-                // above and swoop back into its slot, same as the initial
-                // formation entrance.
-                s16 h = (s16) enemy_heightForKind(e->kind);
-                s16 side = (random() & 1) ? DIVE_REENTRY_OFFSET : -DIVE_REENTRY_OFFSET;
-                s16 startX = e->slotX + side;
-                if (startX < PLAY_AREA_X_MIN) startX = PLAY_AREA_X_MIN;
-                if (startX > PLAY_AREA_X_MAX) startX = PLAY_AREA_X_MAX;
-                s16 startY = -h - 10;
+                if (e->forcedOut)
+                {
+                    // Timed out (see formation.c) -- gone for good, no
+                    // score/powerup, same as enemies_hideAll().
+                    e->active = FALSE;
+                    SPR_setVisibility(e->sprite, HIDDEN);
+                    if (e->diving)
+                    {
+                        e->diving = FALSE;
+                        activeDivers--;
+                    }
+                }
+                else
+                {
+                    // Passed off the bottom of the screen -- reappear from
+                    // above and swoop back into its slot, same as the initial
+                    // formation entrance.
+                    s16 h = (s16) enemy_heightForKind(e->kind);
+                    s16 side = (random() & 1) ? DIVE_REENTRY_OFFSET : -DIVE_REENTRY_OFFSET;
+                    s16 startX = e->slotX + side;
+                    if (startX < PLAY_AREA_X_MIN) startX = PLAY_AREA_X_MIN;
+                    if (startX > PLAY_AREA_X_MAX) startX = PLAY_AREA_X_MAX;
+                    s16 startY = -h - 10;
 
-                e->x = FIX16(startX);
-                e->y = FIX16(startY);
-                e->vx = FIX16(e->slotX - startX) / ENTER_DURATION;
-                e->vy = FIX16(e->slotY - startY) / ENTER_DURATION;
-                e->enterTimer = 0;
-                e->state = ENEMY_STATE_ENTERING;
-                e->diveCooldown = randomCooldown(DIVE_COOLDOWN_MIN, DIVE_COOLDOWN_RANGE);
+                    e->x = FIX16(startX);
+                    e->y = FIX16(startY);
+                    e->vx = FIX16(e->slotX - startX) / ENTER_DURATION;
+                    e->vy = FIX16(e->slotY - startY) / ENTER_DURATION;
+                    e->enterTimer = 0;
+                    e->state = ENEMY_STATE_ENTERING;
+                    e->diveCooldown = randomCooldown(DIVE_COOLDOWN_MIN, DIVE_COOLDOWN_RANGE);
+                }
             }
         }
 
@@ -392,6 +408,34 @@ void enemies_update(void)
         }
 
         SPR_setPosition(e->sprite, F16_toInt(e->x), F16_toInt(e->y));
+    }
+}
+
+void enemies_forceDiveAllOut(void)
+{
+    for (u16 i = 0; i < MAX_ENEMIES; i++)
+    {
+        Enemy *e = &enemies[i];
+        if (!e->active)
+            continue;
+
+        if (e->state != ENEMY_STATE_DIVING_OUT)
+        {
+            if (!e->diving)
+            {
+                e->diving = TRUE;
+                activeDivers++;
+            }
+
+            s16 drift = (s16) (random() % (2 * DIVE_SPEED_X_MAX + 1)) - DIVE_SPEED_X_MAX;
+            e->vx = drift;
+            e->vy = DIVE_SPEED_Y;
+            e->state = ENEMY_STATE_DIVING_OUT;
+        }
+
+        // Already diving out on its own (a voluntary bee/special dive) --
+        // just mark it so it doesn't loop back in once it's off screen.
+        e->forcedOut = TRUE;
     }
 }
 

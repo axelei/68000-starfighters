@@ -24,4 +24,10 @@ u16 formation_wavesCleared(void);
 // otherwise look identical to a genuinely cleared wave.
 bool formation_enemiesSpawned(void);
 
+// Seconds left before the current wave's remaining enemies get forced to
+// dive off screen -- see WAVE_TIME_LIMIT_FRAMES (formation.c) and score.c's
+// HUD display of it. 0 once they've already been forced out (or before the
+// first wave has spawned).
+u16 formation_waveSecondsLeft(void);
+
 #endif // FORMATION_H

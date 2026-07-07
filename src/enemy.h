@@ -37,6 +37,7 @@ typedef struct
     u16 diveCooldown;  // BEE/SPECIAL only: frames until eligible to dive again
     u16 fireCooldown;  // BIG only: frames until its next shot
     bool diving;       // BEE/SPECIAL only: away from its slot for a dive (counts against MAX_CONCURRENT_DIVERS)
+    bool forcedOut;    // set by enemies_forceDiveAllOut() -- once off screen, deactivate for good instead of re-entering
 } Enemy;
 
 extern Enemy enemies[MAX_ENEMIES];
@@ -56,6 +57,13 @@ u16 enemies_countActive(void);
 // awarding no score/dropping no powerup (called on player death, so the
 // formation doesn't hang frozen on screen through the game-over prompt).
 void enemies_hideAll(void);
+
+// Sends every active enemy into (or keeps it in) ENEMY_STATE_DIVING_OUT from
+// wherever it currently is, marked so that once it scrolls off the bottom of
+// the screen it deactivates for good instead of re-entering -- see
+// formation.c's wave timer. Awards no score/powerup, same as enemies_hideAll,
+// but plays out as a visible dive instead of vanishing instantly.
+void enemies_forceDiveAllOut(void);
 
 // Sprite pixel size for a given kind (16x16 for BEE/SPECIAL, 32x32 for BIG).
 u16 enemy_widthForKind(EnemyKind kind);
