@@ -13,15 +13,15 @@
 // every lap -- see terrain_requestRegen().
 #define TERRAIN_PLANE_H_PX 512
 
-// One slot per (half, anchor) pair -- see BANDS_PER_PLANE/ANCHORS_PER_BAND in
-// terrain.c (2 halves x 5 anchors/row = 10). Unlike a flat "append as
-// generated" list, every slot always exists (even if its anchor rolled
-// empty, marked by tileW == 0) so each half owns a fixed, never-changing
-// index range that can be safely rerolled in place later.
-#define MAX_TERRAIN_CLUMPS 10
+// One slot per (half, anchor) pair -- see BANDS_PER_PLANE (terrain.c) x
+// TERRAIN_MAP_ANCHORS (terrain_generated.h) = 2 x 3 = 6. Unlike a flat
+// "append as generated" list, every slot always exists (even if its anchor
+// rolled empty, marked by tileW == 0) so each half owns a fixed,
+// never-changing index range that can be safely rerolled in place later.
+#define MAX_TERRAIN_CLUMPS 6
 
 // One scattered terrain clump's footprint, in plane tile coordinates (see
-// fillTerrainPlane() in terrain.c). Used by turret.c to place turrets on top
+// applyTerrainMap() in terrain.c). Used by turret.c to place turrets on top
 // of an actual clump instead of at an arbitrary position.
 typedef struct
 {

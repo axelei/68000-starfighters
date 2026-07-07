@@ -306,7 +306,13 @@ void enemies_update(void)
 
                     fix16 dx = player.x - bx;
                     fix16 dy = player.y - by;
-                    if (dy < FIX16(20)) dy = FIX16(20); // avoid divide blowup if level with/above the target
+                    // Avoid divide blowup if level with the target -- but
+                    // keep dy's sign (don't just clamp to +20), otherwise a
+                    // player above this enemy would still get shot at as if
+                    // below it, aiming the shot the wrong way instead of up
+                    // at them.
+                    if (dy > -FIX16(20) && dy < FIX16(20))
+                        dy = (dy < 0) ? -FIX16(20) : FIX16(20);
 
                     // Normalize (dx,dy) to a unit vector before scaling by
                     // speed -- deriving vx from the slope while holding vy

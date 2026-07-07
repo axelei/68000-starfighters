@@ -1,5 +1,6 @@
 #include "terrain.h"
 #include "resources.h"
+#include "terrain_generated.h"
 
 #define PLANE_W_TILES 64
 #define PLANE_H_TILES 64 // TERRAIN_PLANE_H_PX (terrain.h) / 8
@@ -18,17 +19,15 @@ TerrainClump terrainClumps[MAX_TERRAIN_CLUMPS];
 static fix16 terrainScroll;
 static fix16 starfieldScroll;
 
-#define CLUMP_SPACING  14 // tile grid spacing between candidate clump anchors
-#define CLUMP_MAX_SIZE 10 // clumps are randomly 1x1 up to CLUMP_MAX_SIZE^2 tiles
-
-// The plane is split into two fixed halves, each BAND_ROWS (=PLANE_H_TILES/2)
-// tile rows tall, so a half can be rerolled on its own without touching the
-// other -- see terrain_requestRegen()/terrain_update(). PLANE_H_TILES must be
-// even (independent of CLUMP_SPACING, which just governs anchor spacing
-// *within* a half).
-#define BAND_ROWS        (PLANE_H_TILES / 2)
+// The plane is split into two fixed halves, each BAND_ROWS tile rows tall,
+// so a half can be rerolled on its own without touching the other -- see
+// terrain_requestRegen()/terrain_update(). BAND_ROWS/ANCHORS_PER_BAND come
+// from terrain_generated.h (res/generate_terrain.py) -- that's also where
+// the actual clump/star shapes now live; this file just picks one of the
+// pregenerated variants and stamps it, instead of rolling shapes itself.
+#define BAND_ROWS        TERRAIN_MAP_BAND_ROWS
 #define BANDS_PER_PLANE  2
-#define ANCHORS_PER_BAND ((PLANE_W_TILES + CLUMP_SPACING - 1) / CLUMP_SPACING)
+#define ANCHORS_PER_BAND TERRAIN_MAP_ANCHORS
 
 // Screen height in tile rows -- the visible window's size when checking
 // whether a half is currently fully off-screen (see halfIsOffscreen()).
@@ -40,78 +39,72 @@ static fix16 starfieldScroll;
 // player is currently looking at.
 static bool regenPending;
 
-// Fills (or refills) one band's worth of terrain clumps -- rows
-// [bandRow, bandRow + BAND_ROWS) -- scattering candidate clumps at sparse
-// grid anchors exactly like the original single-shot generator did, just
-// scoped to one band so terrain_update() can redo it later once that band
-// has scrolled safely out of view.
-static void fillTerrainBand(u16 bandIndex, u16 bandRow)
+// Also self-requests a regen every AUTO_REGEN_FRAMES, independent of
+// formation.c's wave-change trigger -- a long-running wave (or a player
+// stuck replaying the same one) would otherwise never see any variety.
+#define AUTO_REGEN_FRAMES (40 * 60) // ~40s at 60fps
+static u16 autoRegenTimer;
+
+// Stamps one of the pregenerated terrain variants (terrain_generated.h) onto
+// one band's rows [bandRow, bandRow + BAND_ROWS). Only TERRAIN_MAP_COLS
+// columns are ever touched -- the plane is wider than the screen (see
+// PLANE_W_TILES) purely to satisfy VDP_setPlaneSize()'s hardware constraint,
+// so there's nothing to gain from generating or writing columns that never
+// scroll into view.
+static void applyTerrainMap(u16 bandIndex, u16 bandRow)
 {
+    const TerrainMap *map = &terrainMaps[random() % TERRAIN_MAP_COUNT];
+
+    // Blank the whole band first (one DMA-backed call) -- clumps only cover
+    // part of it, and the rest needs to revert to "no clump here" from
+    // whatever the previous variant left behind.
+    VDP_fillTileMapRect(BG_A, 0, 0, bandRow, TERRAIN_MAP_COLS, BAND_ROWS);
+
     for (u16 a = 0; a < ANCHORS_PER_BAND; a++)
     {
-        u16 cx = a * CLUMP_SPACING;
+        const TerrainMapClump *mc = &map->clumps[a];
         TerrainClump *clump = &terrainClumps[bandIndex * ANCHORS_PER_BAND + a];
 
-        // Erase whatever this anchor held before (if anything) -- it may
-        // have been a different size/shape, or empty.
-        if (clump->tileW > 0)
+        if (mc->tileW == 0) // empty anchor -- see terrain_generated.h
         {
-            for (u16 dy = 0; dy < clump->tileH; dy++)
-                for (u16 dx = 0; dx < clump->tileW; dx++)
-                    VDP_setTileMapXY(BG_A, 0, clump->tileX + dx, clump->tileY + dy);
+            clump->tileW = 0;
+            clump->tileH = 0;
+            continue;
         }
 
-        clump->tileW = 0;
-        clump->tileH = 0;
+        clump->tileX = mc->tileX;
+        clump->tileY = bandRow + mc->tileY;
+        clump->tileW = mc->tileW;
+        clump->tileH = mc->tileH;
 
-        if ((random() & 15) > 8) // skip most anchors so clumps stay sparse
-            continue;
-
-        u16 w = 1 + (random() % CLUMP_MAX_SIZE);
-        u16 h = 1 + (random() % CLUMP_MAX_SIZE);
-        u16 ox = cx + (random() % (CLUMP_SPACING - w));
-        u16 oy = bandRow + (random() % (BAND_ROWS - h));
-
-        clump->tileX = ox;
-        clump->tileY = oy;
-        clump->tileW = w;
-        clump->tileH = h;
-
-        for (u16 dy = 0; dy < h; dy++)
+        for (u16 dy = 0; dy < mc->tileH; dy++)
         {
-            for (u16 dx = 0; dx < w; dx++)
+            for (u16 dx = 0; dx < mc->tileW; dx++)
             {
-                // Randomly skip corner cells so clumps read as irregular
-                // blobs rather than solid rectangles.
-                bool corner = (dx == 0 || dx == w - 1) && (dy == 0 || dy == h - 1);
-                if (corner && (random() & 3) == 0)
+                u8 cell = mc->cells[(dy * mc->tileW) + dx];
+                if (cell == 0) // gap -- irregular blob edge (see the generator)
                     continue;
 
-                u16 variant = random() & 3;
-                u16 tile = TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, TERRAIN_BASE_TILE + variant);
-                VDP_setTileMapXY(BG_A, tile, ox + dx, oy + dy);
+                u16 tile = TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, TERRAIN_BASE_TILE + (cell - 1));
+                VDP_setTileMapXY(BG_A, tile, clump->tileX + dx, clump->tileY + dy);
             }
         }
     }
 }
 
-// Rerolls one band's worth of starfield -- rows [bandRow, bandRow + BAND_ROWS)
-// across the full plane width. No clump-tracking needed here (BG_B is purely
-// decorative), so unlike fillTerrainBand() this just overwrites every cell.
-static void fillStarfieldBand(u16 bandRow)
+// Stamps one of the pregenerated starfield variants onto one band's rows.
+// No clump-tracking needed here (BG_B is purely decorative).
+static void applyStarfieldMap(u16 bandRow)
 {
-    for (u16 y = bandRow; y < bandRow + BAND_ROWS; y++)
+    const StarfieldMap *map = &starfieldMaps[random() % STARFIELD_MAP_COUNT];
+
+    VDP_fillTileMapRect(BG_B, 0, 0, bandRow, TERRAIN_MAP_COLS, BAND_ROWS);
+
+    for (u16 i = 0; i < map->count; i++)
     {
-        for (u16 x = 0; x < PLANE_W_TILES; x++)
-        {
-            // Mostly empty space (tile 0) with sparse star tiles (1,2),
-            // scattered via random() rather than a fixed hash so the pattern
-            // isn't a visibly repeating grid.
-            u16 roll = random() & 31;
-            u16 variant = (roll == 0) ? 1 : (roll == 1 ? 2 : 0);
-            u16 tile = TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, STARFIELD_BASE_TILE + variant);
-            VDP_setTileMapXY(BG_B, tile, x, y);
-        }
+        const StarfieldStar *s = &map->stars[i];
+        u16 tile = TILE_ATTR_FULL(PAL_TERRA, FALSE, FALSE, FALSE, STARFIELD_BASE_TILE + (s->variant - 1));
+        VDP_setTileMapXY(BG_B, tile, s->x, bandRow + s->y);
     }
 }
 
@@ -124,13 +117,11 @@ void terrain_init(void)
     VDP_setPlaneSize(PLANE_W_TILES, PLANE_H_TILES, TRUE);
 
     // BG_A isn't exclusively ours -- the title screen's logo (title.c) is
-    // drawn on BG_A too, leaving real (non-blank) tilemap entries behind in
-    // the rows/columns it used. fillTerrainBand() only touches its sparse
-    // clump cells (unlike fillStarfieldBand(), which overwrites every BG_B
-    // cell), so without this explicit clear, leftover logo tilemap entries
-    // would linger and reference whatever tile pattern data now occupies
-    // those indices once the terrain tileset is loaded below -- showing up
-    // as garbled leftover logo shapes instead of the intended sparse chunks.
+    // drawn on BG_A too, at columns 0..39 (its full width). applyTerrainMap()
+    // below blanks that same column range for both bands (i.e. the whole
+    // plane height), so this is only needed for the untouched columns 40..63
+    // (never generated/drawn to -- see TERRAIN_MAP_COLS -- since they never
+    // scroll into view with no horizontal scroll in use).
     VDP_clearPlane(BG_A, TRUE);
     VDP_clearPlane(BG_B, TRUE);
 
@@ -143,13 +134,14 @@ void terrain_init(void)
 
     for (u16 b = 0; b < BANDS_PER_PLANE; b++)
     {
-        fillTerrainBand(b, b * BAND_ROWS);
-        fillStarfieldBand(b * BAND_ROWS);
+        applyTerrainMap(b, b * BAND_ROWS);
+        applyStarfieldMap(b * BAND_ROWS);
     }
 
     terrainScroll = 0;
     starfieldScroll = 0;
     regenPending = FALSE;
+    autoRegenTimer = AUTO_REGEN_FRAMES;
 }
 
 // True if not one of the VIEW_ROWS rows currently on screen falls within
@@ -186,6 +178,16 @@ void terrain_update(void)
     VDP_setVerticalScroll(BG_A, -F16_toInt(terrainScroll));
     VDP_setVerticalScroll(BG_B, -F16_toInt(starfieldScroll));
 
+    if (autoRegenTimer > 0)
+    {
+        autoRegenTimer--;
+    }
+    else
+    {
+        regenPending = TRUE;
+        autoRegenTimer = AUTO_REGEN_FRAMES;
+    }
+
     if (regenPending)
     {
         s16 topRow = ((s32) F16_toInt(terrainScroll) / 8) % PLANE_H_TILES;
@@ -196,8 +198,8 @@ void terrain_update(void)
         {
             if (halfIsOffscreen(half, topRow))
             {
-                fillTerrainBand(half, half * BAND_ROWS);
-                fillStarfieldBand(half * BAND_ROWS);
+                applyTerrainMap(half, half * BAND_ROWS);
+                applyStarfieldMap(half * BAND_ROWS);
                 regenPending = FALSE;
                 break;
             }
@@ -207,11 +209,12 @@ void terrain_update(void)
 
 void terrain_requestRegen(void)
 {
-    // Rerolling a half costs several hundred VDP_setTileMapXY calls (up to
-    // PLANE_W_TILES=64 starfield tiles/row x BAND_ROWS rows, plus terrain
-    // clumps) -- cheap as a one-off, but visibly janky if it lands while the
-    // player can actually see the half being rewritten. So this doesn't
-    // regenerate anything itself: it just flags the request, and
+    // Applying a half still costs a couple of bulk VDP_fillTileMapRect calls
+    // plus one VDP_setTileMapXY per star/clump cell (no random() calls left,
+    // now that terrain_generated.h has the shapes pregenerated) -- cheap as
+    // a one-off, but still visibly janky if it lands while the player can
+    // actually see the half being rewritten. So this doesn't regenerate
+    // anything itself: it just flags the request, and
     // terrain_update() carries it out on whichever later frame first finds
     // one of the two halves entirely off-screen (see halfIsOffscreen()) --
     // which happens naturally within at most about half a lap of scrolling.
