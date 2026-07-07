@@ -7,6 +7,10 @@
 void score_init(void);
 void score_addKill(EnemyKind kind);
 void score_addTurretKill(void);
+
+// Awarded once when every enemy in an inter-wave formation was shot down --
+// see formation.c's beginInterwave()/enemies_waverKillCount().
+void score_addInterwavePerfectBonus(void);
 void score_hud_update(void);
 u32 score_getValue(void);
 

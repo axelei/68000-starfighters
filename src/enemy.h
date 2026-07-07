@@ -8,13 +8,44 @@ typedef enum
     ENEMY_KIND_BEE,
     ENEMY_KIND_SPECIAL,
     ENEMY_KIND_BIG,
+    // Inter-wave-only "waver" kinds (see ENEMY_STATE_WAVING/formation.c's
+    // beginInterwave()) -- 1 HP, differ only in sprite/color. Which of the
+    // WAVER_PATH_COUNT precalculated movement paths (interwave_generated.h)
+    // a batch flies is picked independently at random, not tied to kind --
+    // see enemy.c's spawnNextWaverSubgroup().
+    ENEMY_KIND_WAVER_A,
+    ENEMY_KIND_WAVER_B,
+    ENEMY_KIND_WAVER_C,
 } EnemyKind;
+
+#define WAVER_KIND_COUNT 3 // ENEMY_KIND_WAVER_A/B/C
+
+// One inter-wave formation = WAVER_SUBGROUP_COUNT batches of WAVER_GRID_ROWS
+// x WAVER_GRID_COLS (WAVER_SUBGROUP_SIZE) enemies, spawned one batch at a
+// time -- see enemy_spawnWaverFormation(). Only ever ONE batch's worth of
+// enemies exists at once (the next doesn't spawn until the current one is
+// entirely gone), which is what actually matters for sprite budget: SGDK
+// hard-caps the whole game to 80 *ever-allocated* sprite objects (not just
+// currently-visible ones -- see MAX_SPRITE in sprite_eng.c), and none of our
+// pools (bullets/explosions/powerups/turrets/enemies) ever release theirs.
+// Spawning every batch up front (the original design) needed
+// WAVER_SUBGROUP_SIZE*WAVER_SUBGROUP_COUNT distinct sprite objects
+// simultaneously and blew through that budget (bullets stopped rendering);
+// spawning one batch at a time and reusing the same MAX_ENEMIES slots keeps
+// the enemy pool's contribution bounded to WAVER_SUBGROUP_SIZE regardless of
+// how many batches make up the whole formation.
+#define WAVER_GRID_ROWS      4
+#define WAVER_GRID_COLS      6
+#define WAVER_SUBGROUP_SIZE  (WAVER_GRID_ROWS * WAVER_GRID_COLS) // 24
+#define WAVER_SUBGROUP_COUNT 3
+#define WAVER_TOTAL_COUNT    (WAVER_SUBGROUP_SIZE * WAVER_SUBGROUP_COUNT)
 
 typedef enum
 {
     ENEMY_STATE_ENTERING,
     ENEMY_STATE_IN_FORMATION,
     ENEMY_STATE_DIVING_OUT, // BEE/SPECIAL only: diving down and off the bottom of the screen
+    ENEMY_STATE_WAVING,     // waver kinds only: flying its batch's precalculated path -- entered straight into this, no settle-in first
 } EnemyLifeState;
 
 typedef struct
@@ -38,6 +69,10 @@ typedef struct
     u16 fireCooldown;  // BIG only: frames until its next shot
     bool diving;       // BEE/SPECIAL only: away from its slot for a dive (counts against MAX_CONCURRENT_DIVERS)
     bool forcedOut;    // set by enemies_forceDiveAllOut() -- once off screen, deactivate for good instead of re-entering
+    bool isWaver;          // waver kinds only: TRUE from spawn, see enemy_spawnWaverFormation()
+    s16 groupOffsetX;      // waver kinds only: fixed horizontal offset from its batch's shared path position
+                           // (the row's *vertical* offset only matters at spawn -- it's baked into the
+                           // initial y once, and every WAVING enemy descends at the same constant rate)
 } Enemy;
 
 extern Enemy enemies[MAX_ENEMIES];
@@ -64,6 +99,30 @@ void enemies_hideAll(void);
 // formation.c's wave timer. Awards no score/powerup, same as enemies_hideAll,
 // but plays out as a visible dive instead of vanishing instantly.
 void enemies_forceDiveAllOut(void);
+
+// Starts one inter-wave formation of the given kind: WAVER_SUBGROUP_COUNT
+// batches of WAVER_SUBGROUP_SIZE enemies, spawned one batch at a time as
+// each previous one fully clears (see enemy.h's top comment for why).
+// Returns immediately after spawning just the first batch; enemies_update()
+// drives the rest. See formation.c's beginInterwave().
+void enemy_spawnWaverFormation(EnemyKind kind);
+
+// True once every batch of the current inter-wave formation has been
+// spawned and fully cleared (killed or flown off screen) -- formation.c
+// polls this instead of enemies_countActive() during the inter-wave phase,
+// since that would also read as "clear" during the brief pause between
+// batches.
+bool enemies_waverFormationDone(void);
+
+// How many waver enemies were killed (not merely deactivated by flying off
+// screen) across every batch since the last enemy_spawnWaverFormation()
+// call -- formation.c compares this to WAVER_TOTAL_COUNT to award a
+// perfect-clear bonus only if every one of them was actually shot down.
+u16 enemies_waverKillCount(void);
+
+// True for ENEMY_KIND_WAVER_A/B/C -- see collision.c's ram-death rule (as
+// fragile as BEE/SPECIAL, dies on contact with the player too).
+bool enemy_isWaverKind(EnemyKind kind);
 
 // Sprite pixel size for a given kind (16x16 for BEE/SPECIAL, 32x32 for BIG).
 u16 enemy_widthForKind(EnemyKind kind);

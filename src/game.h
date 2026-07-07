@@ -29,7 +29,13 @@
 
 #define MAX_PLAYER_BULLETS 16
 #define MAX_ENEMY_BULLETS  24
-#define MAX_ENEMIES        32
+// Headroom above WAVER_TOTAL_COUNT (enemy.h): enemy_spawnWaverFormation()
+// pre-spawns every inter-wave sub-block up front (most sitting HIDDEN with a
+// long startDelay until their turn), so the *software* pool needs a slot for
+// all of them at once even though only one sub-block's sprites are ever
+// actually visible on the VDP at a time -- see WAVER_SUBGROUP_COUNT's
+// comment for why that matters for the Genesis's 80-sprite hardware limit.
+#define MAX_ENEMIES 48
 #define MAX_POWERUPS        4
 
 // Terrain scroll speed, fixed-point pixels/frame (see terrain.c). Shared

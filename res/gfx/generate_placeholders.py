@@ -101,13 +101,25 @@ def player_ship():
     return combined
 
 
-# palette 1 (PAL_ENEMY): shared by every enemy kind (bee/special/big), since
-# only one of their source images (enemy_bee.png, via the PALETTE
+# palette 1 (PAL_ENEMY): shared by every enemy kind (bee/special/big/waver),
+# since only one of their source images (enemy_bee.png, via the PALETTE
 # declaration in resources.res) actually gets loaded onto the hardware
 # palette -- the others' pixel *indices* must agree with this same mapping
 # or their colors come out wrong. Index 4 is reserved solid white, used for
-# the hit-flash frame (see enemy.c's enemy_hit()/SPR_setFrame).
-ENEMY_PAL = [TRANSPARENT, (255, 90, 90), (255, 200, 90), (140, 30, 30), (255, 255, 255)]
+# the hit-flash frame (see enemy.c's enemy_hit()/SPR_setFrame). Indices 5-7
+# are the 3 inter-wave "waver" kinds' own colors (see enemy_waver_a/b/c()) --
+# distinct from the red/orange bee family so they read as a different group
+# at a glance, without needing a separate hardware palette.
+ENEMY_PAL = [
+    TRANSPARENT,
+    (255, 90, 90),   # 1: bee/special/big hull
+    (255, 200, 90),  # 2: bee/special/big accent
+    (140, 30, 30),   # 3: bee/special/big shadow
+    (255, 255, 255), # 4: hit-flash (shared by every enemy kind)
+    (90, 220, 255),  # 5: waver A
+    (200, 110, 255), # 6: waver B
+    (120, 255, 140), # 7: waver C
+]
 
 
 def _enemy_frames(w, h, draw_fn):
@@ -165,6 +177,42 @@ def enemy_big():
         fill_rect(img, 12, 8, 20, 22, 2)
 
     return _enemy_frames(32, 32, draw)
+
+
+def enemy_waver_a():
+    # Upward chevron/arrow -- the inter-wave "waver" kinds (see enemy.c's
+    # ENEMY_STATE_WAVING) are visually a distinct family from bee/special/big
+    # (color 5 instead of 1/2/3), reusing ENEMY_PAL rather than a separate
+    # hardware palette (see ENEMY_PAL's comment).
+    def draw(img):
+        for row in range(16):
+            half_width = row // 2 + 1
+            cx = 8
+            fill_rect(img, max(0, cx - half_width), row, min(16, cx + half_width), row + 1, 5)
+
+    return _enemy_frames(16, 16, draw)
+
+
+def enemy_waver_b():
+    # Hexagon-ish blob.
+    def draw(img):
+        cx, cy = 8, 8
+        for y in range(16):
+            for x in range(16):
+                dx, dy = abs(x - cx + 0.5), abs(y - cy + 0.5)
+                if dx * 0.6 + dy <= 8:
+                    set_px(img, x, y, 6)
+
+    return _enemy_frames(16, 16, draw)
+
+
+def enemy_waver_c():
+    # Small cross/plus shape.
+    def draw(img):
+        fill_rect(img, 6, 1, 10, 15, 7)
+        fill_rect(img, 1, 6, 15, 10, 7)
+
+    return _enemy_frames(16, 16, draw)
 
 
 def explosion():
@@ -487,6 +535,9 @@ GENERATORS = {
     "enemy_bee.png": enemy_bee,
     "enemy_special.png": enemy_special,
     "enemy_big.png": enemy_big,
+    "enemy_waver_a.png": enemy_waver_a,
+    "enemy_waver_b.png": enemy_waver_b,
+    "enemy_waver_c.png": enemy_waver_c,
     "explosion.png": explosion,
     "title.png": title_image,
     "bullet_player.png": bullet_player,

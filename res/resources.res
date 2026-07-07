@@ -30,6 +30,12 @@ SPRITE spr_powerup_speed  "gfx/powerup_speed.png"  2 2 BEST
 // colors (see generate_placeholders.py's ENEMY_PAL).
 SPRITE spr_turret         "gfx/turret.png"         2 2 BEST
 
+// Inter-wave "waver" enemies (see enemy.c's ENEMY_STATE_WAVING/formation.c's
+// beginInterwave()); also share PAL_ENEMY (ENEMY_PAL's indices 5-7).
+SPRITE spr_enemy_waver_a  "gfx/enemy_waver_a.png"  2 2 BEST
+SPRITE spr_enemy_waver_b  "gfx/enemy_waver_b.png"  2 2 BEST
+SPRITE spr_enemy_waver_c  "gfx/enemy_waver_c.png"  2 2 BEST
+
 // -- title screen (see title.c). Bundles its own palette (loaded onto PAL0
 // when drawn) -- not one of the 4 shared gameplay hardware palettes.
 IMAGE title_image "gfx/title.png"

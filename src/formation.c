@@ -38,6 +38,7 @@ static bool waveSpawnPending;  // enemies for waveIndex haven't been spawned yet
 static bool anyWaveSpawned;    // true once spawnWave() has run at least once this game
 static u16 waveTimer;         // frames left before this wave's enemies are forced out
 static bool waveForcedOut;    // true once the forced dive-out has fired for this wave
+static bool inInterwave;      // TRUE while the pre-wave "waver" formation is on screen
 
 static bool isSpecialSlot(const WaveDef *wave, u16 row, u16 col)
 {
@@ -102,6 +103,18 @@ static void spawnWave(u16 index)
     waveForcedOut = FALSE;
 }
 
+// Every wave (including the first) is preceded by a short formation of
+// fragile "waver" enemies flying through -- see enemy_spawnWaverFormation().
+// No banner for it: the staggered entrance already reads as "something's
+// starting." Once every waver is gone (killed or flown off screen),
+// formation_update() detects that the same way it detects a cleared combat
+// wave (enemies_countActive() == 0) and proceeds to startWave().
+static void beginInterwave(void)
+{
+    inInterwave = TRUE;
+    enemy_spawnWaverFormation(ENEMY_KIND_WAVER_A + (waveIndex % WAVER_KIND_COUNT));
+}
+
 // Only shows the "WAVE N" banner -- the actual enemies don't swoop in until
 // it finishes (see formation_update()), so the announcement isn't competing
 // with combat for the player's attention.
@@ -127,7 +140,8 @@ void formation_init(void)
     anyWaveSpawned = FALSE;
     waveTimer = 0;
     waveForcedOut = FALSE;
-    startWave(waveIndex);
+    inInterwave = FALSE;
+    beginInterwave();
 }
 
 void formation_update(void)
@@ -155,12 +169,12 @@ void formation_update(void)
         if (clearDelayTimer == 0)
         {
             waveIndex++;
-            startWave(waveIndex);
+            beginInterwave();
         }
         return;
     }
 
-    if (!waveForcedOut && waveTimer > 0)
+    if (!inInterwave && !waveForcedOut && waveTimer > 0)
     {
         waveTimer--;
         if (waveTimer == 0)
@@ -172,7 +186,23 @@ void formation_update(void)
         }
     }
 
-    if (enemies_countActive() == 0)
+    if (inInterwave)
+    {
+        // Not enemies_countActive() == 0 -- that also reads TRUE during the
+        // brief pause between two inter-wave batches (see
+        // enemy.c's updateWaverFormationSequencing()), which would trigger
+        // this prematurely.
+        if (enemies_waverFormationDone())
+        {
+            inInterwave = FALSE;
+            // Every waver was actually shot down (none flew off screen
+            // uncontested) -- see enemy_kill()'s waverKillCount tracking.
+            if (enemies_waverKillCount() == WAVER_TOTAL_COUNT)
+                score_addInterwavePerfectBonus();
+            startWave(waveIndex);
+        }
+    }
+    else if (enemies_countActive() == 0)
     {
         wavesCleared++;
         clearDelayTimer = WAVE_CLEAR_DELAY;

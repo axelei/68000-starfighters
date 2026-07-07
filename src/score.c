@@ -44,6 +44,11 @@
 #define POINTS_SPECIAL 300
 #define POINTS_BIG     1000
 #define POINTS_TURRET  200
+#define POINTS_WAVER   150 // ENEMY_KIND_WAVER_A/B/C -- same for all 3, they only differ in path
+
+// Awarded once per inter-wave formation if every waver in it was shot down
+// (see formation.c's beginInterwave()/enemies_waverKillCount()).
+#define INTERWAVE_PERFECT_BONUS 1000
 
 static u32 score;
 static u32 displayedScore = 0xFFFFFFFF; // force first draw
@@ -119,6 +124,9 @@ void score_addKill(EnemyKind kind)
     {
         case ENEMY_KIND_SPECIAL: score += POINTS_SPECIAL; break;
         case ENEMY_KIND_BIG:     score += POINTS_BIG;     break;
+        case ENEMY_KIND_WAVER_A:
+        case ENEMY_KIND_WAVER_B:
+        case ENEMY_KIND_WAVER_C: score += POINTS_WAVER;   break;
         default:                 score += POINTS_BEE;     break;
     }
 }
@@ -126,6 +134,11 @@ void score_addKill(EnemyKind kind)
 void score_addTurretKill(void)
 {
     score += POINTS_TURRET;
+}
+
+void score_addInterwavePerfectBonus(void)
+{
+    score += INTERWAVE_PERFECT_BONUS;
 }
 
 u32 score_getValue(void)
@@ -171,7 +184,7 @@ void score_hud_update(void)
         displayedTime = secondsLeft;
 
         char buf[4];
-        uintToStr(displayedTime, buf, 2);
+        uintToStr(displayedTime, buf, 3);
         VDP_drawText(buf, TIME_HUD_X, TIME_HUD_Y + 1);
     }
 }

@@ -92,10 +92,10 @@ static void resolveEnemyThreatsVsPlayer(void)
 
         if (aabb_overlaps(pbox, enemy_getBounds(e)))
         {
-            // Small enemies are destroyed by the collision too, not just
-            // the player -- a ramming BEE/SPECIAL doesn't survive the hit.
-            // BIG enemies are too tough to be taken out this way.
-            if (e->kind == ENEMY_KIND_BEE || e->kind == ENEMY_KIND_SPECIAL)
+            // Small/fragile enemies are destroyed by the collision too, not
+            // just the player -- a ramming BEE/SPECIAL/waver doesn't survive
+            // the hit. BIG enemies are too tough to be taken out this way.
+            if (e->kind == ENEMY_KIND_BEE || e->kind == ENEMY_KIND_SPECIAL || enemy_isWaverKind(e->kind))
                 enemy_kill(e);
             player_kill();
             return;

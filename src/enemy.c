@@ -6,6 +6,7 @@
 #include "player.h"
 #include "explosion.h"
 #include "sfx.h"
+#include "interwave_generated.h"
 
 Enemy enemies[MAX_ENEMIES];
 
@@ -15,6 +16,7 @@ Enemy enemies[MAX_ENEMIES];
 #define HP_BEE     10
 #define HP_SPECIAL 10
 #define HP_BIG     100
+#define HP_WAVER   1
 
 // BEE/SPECIAL: occasionally peel out of formation, dive down and off the
 // bottom of the screen, then re-enter from the top back into its slot --
@@ -37,11 +39,58 @@ Enemy enemies[MAX_ENEMIES];
 #define BIG_EXPLOSION_COUNT       5
 #define BIG_EXPLOSION_STAGGER     6 // frames between each burst starting
 
+// Inter-wave "waver" formation (see ENEMY_STATE_WAVING/enemy_spawnWaverFormation()).
+// One formation = WAVER_SUBGROUP_COUNT batches of WAVER_GRID_ROWS x
+// WAVER_GRID_COLS (WAVER_SUBGROUP_SIZE, both from enemy.h) enemies, spawned
+// one batch at a time (see enemy.h's top comment for why). Members go
+// straight into ENEMY_STATE_WAVING from spawn -- no separate entrance flight
+// that settles into a neat grid first; they scroll onto the screen already
+// riding their kind's precalculated path (interwave_generated.h). Rows
+// within a batch are staggered by WAVER_ROW_STAGGER_FRAMES so the whole
+// batch doesn't pop in as one block. INTERWAVE_ENTRY_STAGGER_SECONDS
+// (settings.h) is the pause between one batch fully clearing and the next
+// appearing.
+#define WAVER_BATCH_GAP_FRAMES (INTERWAVE_ENTRY_STAGGER_SECONDS * 60)
+#define WAVER_COL_SPACING 18 // px between column centers -- edges just touch (16px sprite), no overlap
+#define WAVER_ROW_SPACING 18
+#define WAVER_ROW_STAGGER_FRAMES 40 // ~1/3s between each row starting to scroll in
+#define WAVER_DESCEND_SPEED FIX16(1.5) // must match DESCEND_SPEED_PX in generate_interwave.py
+
+// Wavers only rarely fire back -- a long cooldown means any single one
+// fires at most once or twice during its whole flight.
+#define WAVER_FIRE_COOLDOWN_MIN   240 // 4s
+#define WAVER_FIRE_COOLDOWN_RANGE 180 // up to +3s more
+#define WAVER_BULLET_SPEED FIX16(1.6)
+#define WAVER_AIM_JITTER    FIX16(0.6)
+
 // BEE/SPECIAL only: caps how many can be away from their formation slot
 // (diving out and/or swooping back in) at the same time.
 #define MAX_CONCURRENT_DIVERS 5
 
 static u16 activeDivers;
+
+// The current inter-wave batch's shared path clock (see
+// enemy_spawnWaverFormation()): only one batch is ever spawned/alive at a
+// time, so a single instance is enough. Every WAVING member reads this same
+// clock -- ticks once per frame from the moment the batch spawns.
+static u16 currentWaverClock;
+
+// Which of the WAVER_PATH_COUNT precalculated paths (interwave_generated.h)
+// the current batch is riding -- picked at random (see spawnNextWaverSubgroup())
+// each time a batch spawns, independent of ENEMY_KIND_WAVER_A/B/C (which only
+// pick the sprite/color, not the movement).
+static u8 currentWaverPathId;
+
+// Inter-wave formation sequencing state -- see enemy_spawnWaverFormation()
+// and updateWaverFormationSequencing().
+static EnemyKind waverFormationKind;
+static u16 waverBatchesSpawned;  // how many of WAVER_SUBGROUP_COUNT have started so far
+static u16 waverGapTimer;        // frames since the current (cleared) batch was confirmed gone
+static bool waverFormationActive; // FALSE once every batch has been spawned and cleared
+
+// Killed (not merely flown off screen) since the last
+// enemy_spawnWaverFormation() call -- see enemies_waverKillCount().
+static u16 waverKillCount;
 
 // All enemies of a given kind look identical (differing only in position),
 // so their tile graphics are uploaded to VRAM exactly once per kind here
@@ -52,8 +101,9 @@ static u16 activeDivers;
 // "VRAM tile index" attribute at the shared normal/flash block for its
 // kind (see SPR_setVRAMTileIndex calls below) rather than using
 // SPR_setAnim/SPR_setFrame, which would try to re-upload tile data.
-static u16 normalTile[3];
-static u16 flashTile[3];
+// Sized for every EnemyKind, including the 3 waver kinds.
+static u16 normalTile[ENEMY_KIND_WAVER_C + 1];
+static u16 flashTile[ENEMY_KIND_WAVER_C + 1];
 
 #define ENEMY_TILE_BASE (TILE_USER_INDEX + 128)
 
@@ -84,6 +134,24 @@ static void loadSharedTiles(void)
     normalTile[ENEMY_KIND_BIG] = idx[0][0];
     flashTile[ENEMY_KIND_BIG] = idx[1][0];
     MEM_free(idx);
+    base += totalTiles;
+
+    idx = SPR_loadAllFrames(&spr_enemy_waver_a, base, &totalTiles);
+    normalTile[ENEMY_KIND_WAVER_A] = idx[0][0];
+    flashTile[ENEMY_KIND_WAVER_A] = idx[1][0];
+    MEM_free(idx);
+    base += totalTiles;
+
+    idx = SPR_loadAllFrames(&spr_enemy_waver_b, base, &totalTiles);
+    normalTile[ENEMY_KIND_WAVER_B] = idx[0][0];
+    flashTile[ENEMY_KIND_WAVER_B] = idx[1][0];
+    MEM_free(idx);
+    base += totalTiles;
+
+    idx = SPR_loadAllFrames(&spr_enemy_waver_c, base, &totalTiles);
+    normalTile[ENEMY_KIND_WAVER_C] = idx[0][0];
+    flashTile[ENEMY_KIND_WAVER_C] = idx[1][0];
+    MEM_free(idx);
 }
 
 void enemies_init(void)
@@ -99,6 +167,13 @@ void enemies_init(void)
         // SPR_addSprite handle instead of leaking a new one every game.
     }
     activeDivers = 0;
+
+    currentWaverClock = 0;
+    currentWaverPathId = 0;
+    waverBatchesSpawned = 0;
+    waverGapTimer = 0;
+    waverFormationActive = FALSE;
+    waverKillCount = 0;
 }
 
 u16 enemies_countSmall(void)
@@ -128,6 +203,9 @@ static const SpriteDefinition *spriteDefForKind(EnemyKind kind)
     {
         case ENEMY_KIND_SPECIAL: return &spr_enemy_special;
         case ENEMY_KIND_BIG:     return &spr_enemy_big;
+        case ENEMY_KIND_WAVER_A: return &spr_enemy_waver_a;
+        case ENEMY_KIND_WAVER_B: return &spr_enemy_waver_b;
+        case ENEMY_KIND_WAVER_C: return &spr_enemy_waver_c;
         default:                 return &spr_enemy_bee;
     }
 }
@@ -138,8 +216,16 @@ static s16 maxHpForKind(EnemyKind kind)
     {
         case ENEMY_KIND_BIG: return HP_BIG;
         case ENEMY_KIND_SPECIAL: return HP_SPECIAL;
+        case ENEMY_KIND_WAVER_A:
+        case ENEMY_KIND_WAVER_B:
+        case ENEMY_KIND_WAVER_C: return HP_WAVER;
         default: return HP_BEE;
     }
+}
+
+bool enemy_isWaverKind(EnemyKind kind)
+{
+    return kind >= ENEMY_KIND_WAVER_A && kind <= ENEMY_KIND_WAVER_C;
 }
 
 u16 enemy_widthForKind(EnemyKind kind)
@@ -155,6 +241,36 @@ u16 enemy_heightForKind(EnemyKind kind)
 static u16 randomCooldown(u16 minFrames, u16 range)
 {
     return minFrames + (random() % range);
+}
+
+// Fires one bullet from e's current position, aimed at the player (with
+// some random horizontal error), at the given speed. Shared by BIG (regular
+// combat waves) and the waver kinds (inter-wave, rare fire) -- the only
+// difference between them is speed/jitter and how often it's called.
+static void fireAimedShotAt(const Enemy *e, fix16 speed, fix16 jitter)
+{
+    fix16 bx = e->x + FIX16(enemy_widthForKind(e->kind) / 2 - 4);
+    fix16 by = e->y + FIX16(enemy_heightForKind(e->kind));
+
+    fix16 dx = player.x - bx;
+    fix16 dy = player.y - by;
+    // Avoid divide blowup if level with the target -- but keep dy's sign
+    // (don't just clamp to +20), otherwise a player above this enemy would
+    // still get shot at as if below it, aiming the shot the wrong way
+    // instead of up at them.
+    if (dy > -FIX16(20) && dy < FIX16(20))
+        dy = (dy < 0) ? -FIX16(20) : FIX16(20);
+
+    // Normalize (dx,dy) to a unit vector before scaling by speed -- deriving
+    // vx from the slope while holding vy fixed made the total velocity grow
+    // with how horizontal the shot was, since vy never shrank to compensate
+    // for a larger vx.
+    fix16 dist = (fix16) getApproximatedDistance(dx, dy);
+    fix16 vx = F16_mul(F16_div(dx, dist), speed);
+    fix16 vy = F16_mul(F16_div(dy, dist), speed);
+    vx += (fix16) (random() % (2 * jitter + 1)) - jitter;
+
+    bullet_spawn_enemy(bx, by, vx, vy);
 }
 
 Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY, s16 delay)
@@ -181,8 +297,12 @@ Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY,
         e->flashTimer = 0;
         e->diving = FALSE;
         e->forcedOut = FALSE;
+        e->isWaver = FALSE;
+        e->groupOffsetX = 0;
         e->diveCooldown = randomCooldown(DIVE_COOLDOWN_MIN, DIVE_COOLDOWN_RANGE);
-        e->fireCooldown = randomCooldown(BIG_FIRE_COOLDOWN_MIN, BIG_FIRE_COOLDOWN_RANGE);
+        e->fireCooldown = enemy_isWaverKind(kind)
+            ? randomCooldown(WAVER_FIRE_COOLDOWN_MIN, WAVER_FIRE_COOLDOWN_RANGE)
+            : randomCooldown(BIG_FIRE_COOLDOWN_MIN, BIG_FIRE_COOLDOWN_RANGE);
 
         if (e->sprite == NULL)
             e->sprite = SPR_addSpriteEx(spriteDefForKind(kind), startX, startY,
@@ -250,6 +370,14 @@ void enemy_kill(Enemy *e)
 
     if (e->kind == ENEMY_KIND_SPECIAL)
         powerup_spawnAt(x, y);
+
+    if (e->isWaver)
+        waverKillCount++;
+}
+
+u16 enemies_waverKillCount(void)
+{
+    return waverKillCount;
 }
 
 AABB enemy_getBounds(const Enemy *e)
@@ -258,8 +386,22 @@ AABB enemy_getBounds(const Enemy *e)
     return box;
 }
 
+// Ticks the current batch's shared path clock once per frame -- the
+// per-enemy loop in enemies_update() only reads currentWaverClock, it never
+// increments it (every WAVING member shares the same clock).
+static void updateWaverGroup(void)
+{
+    currentWaverClock++;
+}
+
+static void updateWaverFormationSequencing(void); // defined below, used here
+
 void enemies_update(void)
 {
+    updateWaverGroup();
+    if (waverFormationActive)
+        updateWaverFormationSequencing();
+
     for (u16 i = 0; i < MAX_ENEMIES; i++)
     {
         Enemy *e = &enemies[i];
@@ -281,7 +423,6 @@ void enemies_update(void)
             e->enterTimer++;
             if (e->enterTimer >= ENTER_DURATION)
             {
-                e->state = ENEMY_STATE_IN_FORMATION;
                 e->x = FIX16(e->slotX);
                 e->y = FIX16(e->slotY);
 
@@ -290,6 +431,10 @@ void enemies_update(void)
                     e->diving = FALSE;
                     activeDivers--;
                 }
+
+                // Waver kinds never reach this state -- they go straight to
+                // ENEMY_STATE_WAVING from spawn (see enemy_spawnWaverFormation()).
+                e->state = ENEMY_STATE_IN_FORMATION;
             }
         }
         else if (e->state == ENEMY_STATE_IN_FORMATION)
@@ -302,31 +447,7 @@ void enemies_update(void)
                 }
                 else
                 {
-                    fix16 bx = e->x + FIX16(enemy_widthForKind(e->kind) / 2 - 4);
-                    fix16 by = e->y + FIX16(enemy_heightForKind(e->kind));
-
-                    fix16 dx = player.x - bx;
-                    fix16 dy = player.y - by;
-                    // Avoid divide blowup if level with the target -- but
-                    // keep dy's sign (don't just clamp to +20), otherwise a
-                    // player above this enemy would still get shot at as if
-                    // below it, aiming the shot the wrong way instead of up
-                    // at them.
-                    if (dy > -FIX16(20) && dy < FIX16(20))
-                        dy = (dy < 0) ? -FIX16(20) : FIX16(20);
-
-                    // Normalize (dx,dy) to a unit vector before scaling by
-                    // speed -- deriving vx from the slope while holding vy
-                    // fixed (the old approach) made the total velocity grow
-                    // with how horizontal the shot was, since vy never
-                    // shrank to compensate for a larger vx.
-                    fix16 dist = (fix16) getApproximatedDistance(dx, dy);
-                    fix16 vx = F16_mul(F16_div(dx, dist), ENEMY_BULLET_SPEED);
-                    fix16 vy = F16_mul(F16_div(dy, dist), ENEMY_BULLET_SPEED);
-                    fix16 jitter = (fix16) (random() % (2 * ENEMY_AIM_JITTER + 1)) - ENEMY_AIM_JITTER;
-                    vx += jitter;
-
-                    bullet_spawn_enemy(bx, by, vx, vy);
+                    fireAimedShotAt(e, ENEMY_BULLET_SPEED, ENEMY_AIM_JITTER);
                     e->fireCooldown = randomCooldown(BIG_FIRE_COOLDOWN_MIN, BIG_FIRE_COOLDOWN_RANGE);
                 }
             }
@@ -399,6 +520,34 @@ void enemies_update(void)
                 }
             }
         }
+        else if (e->state == ENEMY_STATE_WAVING)
+        {
+            u16 clock = currentWaverClock;
+            if (clock >= WAVER_PATH_LENGTH)
+                clock = WAVER_PATH_LENGTH - 1;
+
+            s16 anchorX = (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2;
+
+            e->x = FIX16(anchorX + waverPaths[currentWaverPathId][clock] + e->groupOffsetX);
+            e->y += WAVER_DESCEND_SPEED;
+
+            if (F16_toInt(e->y) > SCREEN_H)
+            {
+                // Flew off the bottom -- gone for good, no score/powerup
+                // (see enemy_kill(), never called on this path).
+                e->active = FALSE;
+                SPR_setVisibility(e->sprite, HIDDEN);
+            }
+            else if (e->fireCooldown > 0)
+            {
+                e->fireCooldown--;
+            }
+            else
+            {
+                fireAimedShotAt(e, WAVER_BULLET_SPEED, WAVER_AIM_JITTER);
+                e->fireCooldown = randomCooldown(WAVER_FIRE_COOLDOWN_MIN, WAVER_FIRE_COOLDOWN_RANGE);
+            }
+        }
 
         if (e->flashTimer > 0)
         {
@@ -437,6 +586,97 @@ void enemies_forceDiveAllOut(void)
         // just mark it so it doesn't loop back in once it's off screen.
         e->forcedOut = TRUE;
     }
+}
+
+// Offset of grid position `index` (0..count-1) from the grid's own center,
+// spaced `spacing` apart -- e.g. count=6 spacing=18 gives -45,-27,-9,9,27,45.
+// Exact integer result: (2*index-(count-1)) is always an integer, and
+// spacing is always even, so dividing by 2 never truncates.
+static s16 gridOffset(u16 index, u16 count, s16 spacing)
+{
+    return (s16) ((2 * (s16) index - ((s16) count - 1)) * spacing / 2);
+}
+
+// Spawns exactly one batch of WAVER_SUBGROUP_SIZE enemies of
+// waverFormationKind. Each row appears WAVER_ROW_STAGGER_FRAMES after the
+// previous one (via startDelay), but once a member is actually revealed it
+// goes straight into ENEMY_STATE_WAVING -- no entrance flight that settles
+// into a neat grid first, it's already riding the path (at whatever point
+// in it currentWaverClock has already reached) as it scrolls into view.
+static void spawnNextWaverSubgroup(void)
+{
+    s16 anchorX = (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2;
+    s16 h = (s16) enemy_heightForKind(waverFormationKind);
+
+    currentWaverClock = 0;
+    currentWaverPathId = (u8) (random() % WAVER_PATH_COUNT);
+
+    for (u16 row = 0; row < WAVER_GRID_ROWS; row++)
+    {
+        s16 rowOffset = gridOffset(row, WAVER_GRID_ROWS, WAVER_ROW_SPACING);
+        s16 startY = -h - 10 + rowOffset; // baked in once -- descend carries it forward every frame
+        s16 delay = (s16) (row * WAVER_ROW_STAGGER_FRAMES);
+
+        for (u16 col = 0; col < WAVER_GRID_COLS; col++)
+        {
+            s16 colOffset = gridOffset(col, WAVER_GRID_COLS, WAVER_COL_SPACING);
+            s16 startX = anchorX + colOffset;
+
+            Enemy *e = enemy_spawn(waverFormationKind, startX, startY, startX, startY, delay);
+            if (e == NULL)
+                continue; // pool full -- shouldn't happen (see MAX_ENEMIES)
+
+            e->isWaver = TRUE;
+            e->groupOffsetX = colOffset;
+            e->state = ENEMY_STATE_WAVING;
+        }
+    }
+
+    waverBatchesSpawned++;
+}
+
+void enemy_spawnWaverFormation(EnemyKind kind)
+{
+    waverFormationKind = kind;
+    waverBatchesSpawned = 0;
+    waverGapTimer = 0;
+    waverFormationActive = TRUE;
+    waverKillCount = 0;
+
+    spawnNextWaverSubgroup();
+}
+
+// Advances the current inter-wave formation once its on-screen batch is
+// fully gone: waits WAVER_BATCH_GAP_FRAMES, then either spawns the next
+// batch or, if that was the last one, marks the whole formation done. Called
+// every frame from enemies_update() while waverFormationActive.
+static void updateWaverFormationSequencing(void)
+{
+    for (u16 i = 0; i < MAX_ENEMIES; i++)
+        if (enemies[i].active && enemies[i].isWaver)
+            return; // still something from the current batch on screen
+
+    // The current batch is fully gone.
+    if (waverBatchesSpawned >= WAVER_SUBGROUP_COUNT)
+    {
+        waverFormationActive = FALSE;
+        return;
+    }
+
+    // Count up from 0 (rather than down from a preset value) so it doesn't
+    // matter which frame first notices the batch is clear -- the gap always
+    // measures from that point.
+    waverGapTimer++;
+    if (waverGapTimer >= WAVER_BATCH_GAP_FRAMES)
+    {
+        waverGapTimer = 0;
+        spawnNextWaverSubgroup();
+    }
+}
+
+bool enemies_waverFormationDone(void)
+{
+    return !waverFormationActive;
 }
 
 void enemies_hideAll(void)
