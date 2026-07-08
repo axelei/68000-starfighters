@@ -27,6 +27,24 @@ Enemy enemies[MAX_ENEMIES];
 #define DIVE_COOLDOWN_MIN     180 // 3s at 60fps
 #define DIVE_COOLDOWN_RANGE   240 // up to +4s more
 
+// BEE/SPECIAL: small constant wander around their formation slot while
+// IN_FORMATION, so the grid doesn't look frozen between dives. Radii are
+// kept well inside each slot's actual spacing so neighbors never touch:
+// GRID_SPACING_Y (formation.c) is only 18px against a 16px sprite (2px of
+// slack total), while column spacing is comfortably larger, hence X's
+// radius is bigger than Y's. Speeds come from a small fixed table (not a
+// runtime-computed value) so there's no per-tick DIV/MUL -- picking a new
+// entry and reflecting off the radius bounds is just comparisons/adds.
+#define SMALL_DRIFT_RADIUS_X        10
+#define SMALL_DRIFT_RADIUS_Y        1
+#define SMALL_DRIFT_INTERVAL_MIN    40
+#define SMALL_DRIFT_INTERVAL_RANGE  40
+#define SMALL_DRIFT_SPEED_COUNT     4
+static const fix16 smallDriftSpeedsX[SMALL_DRIFT_SPEED_COUNT] =
+    { FIX16(-0.25), FIX16(-0.1), FIX16(0.1), FIX16(0.25) };
+static const fix16 smallDriftSpeedsY[SMALL_DRIFT_SPEED_COUNT] =
+    { FIX16(-0.1), FIX16(-0.05), FIX16(0.05), FIX16(0.1) };
+
 // BIG: fires at the player (with some aim error) at random intervals while
 // in formation.
 #define BIG_FIRE_COOLDOWN_MIN   90  // 1.5s
@@ -335,6 +353,7 @@ Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY,
         e->isWaver = FALSE;
         e->groupOffsetX = 0;
         e->diveCooldown = randomCooldown(DIVE_COOLDOWN_MIN, DIVE_COOLDOWN_RANGE);
+        e->driftTimer = 0; // picks its first wander direction on its first IN_FORMATION frame
         e->fireCooldown = enemy_isWaverKind(kind)
             ? randomCooldown(WAVER_FIRE_COOLDOWN_MIN, WAVER_FIRE_COOLDOWN_RANGE)
             : randomCooldown(BIG_FIRE_COOLDOWN_MIN, BIG_FIRE_COOLDOWN_RANGE);
@@ -407,7 +426,19 @@ void enemy_kill(Enemy *e)
         powerup_spawnAt(x, y);
 
     if (e->isWaver)
+    {
         waverKillCount++;
+
+        // This is the very last enemy of the whole inter-wave formation to
+        // go down (waverKillCount can't exceed enemies_waverTotalCount(),
+        // and only ever increases by one per kill, so hitting the total
+        // here means every other one was also killed, not just escaped) --
+        // reward the perfect clear with a powerup drop on top of
+        // formation.c's score bonus, since waver kinds otherwise never drop
+        // one themselves.
+        if (waverKillCount == enemies_waverTotalCount())
+            powerup_spawnAt(x, y);
+    }
 }
 
 u16 enemies_waverKillCount(void)
@@ -498,6 +529,32 @@ void enemies_update(void)
             }
             else
             {
+                // Small idle wander so the grid doesn't look frozen between
+                // dives -- picks a new small constant velocity from a fixed
+                // table every so often and reflects off a tight radius
+                // around its slot (see SMALL_DRIFT_RADIUS_X/Y's comment).
+                if (e->driftTimer > 0)
+                {
+                    e->driftTimer--;
+                }
+                else
+                {
+                    e->vx = smallDriftSpeedsX[random() % SMALL_DRIFT_SPEED_COUNT];
+                    e->vy = smallDriftSpeedsY[random() % SMALL_DRIFT_SPEED_COUNT];
+                    e->driftTimer = randomCooldown(SMALL_DRIFT_INTERVAL_MIN, SMALL_DRIFT_INTERVAL_RANGE);
+                }
+
+                e->x += e->vx;
+                e->y += e->vy;
+
+                s16 offX = F16_toInt(e->x) - e->slotX;
+                if (offX > SMALL_DRIFT_RADIUS_X) { e->x = FIX16(e->slotX + SMALL_DRIFT_RADIUS_X); e->vx = -e->vx; }
+                else if (offX < -SMALL_DRIFT_RADIUS_X) { e->x = FIX16(e->slotX - SMALL_DRIFT_RADIUS_X); e->vx = -e->vx; }
+
+                s16 offY = F16_toInt(e->y) - e->slotY;
+                if (offY > SMALL_DRIFT_RADIUS_Y) { e->y = FIX16(e->slotY + SMALL_DRIFT_RADIUS_Y); e->vy = -e->vy; }
+                else if (offY < -SMALL_DRIFT_RADIUS_Y) { e->y = FIX16(e->slotY - SMALL_DRIFT_RADIUS_Y); e->vy = -e->vy; }
+
                 if (e->diveCooldown > 0)
                 {
                     e->diveCooldown--;

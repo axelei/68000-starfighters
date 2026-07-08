@@ -85,6 +85,8 @@ typedef struct
     u16 flashTimer;    // frames remaining showing the white hit-flash sprite frame
     u16 diveCooldown;  // BEE/SPECIAL only: frames until eligible to dive again
     u16 fireCooldown;  // BIG only: frames until its next shot
+    u16 driftTimer;    // BEE/SPECIAL only: frames until this enemy's small
+                       // in-formation wander picks a new drift direction
     bool diving;       // BEE/SPECIAL only: away from its slot for a dive (counts against MAX_CONCURRENT_DIVERS)
     bool forcedOut;    // set by enemies_forceDiveAllOut() -- once off screen, deactivate for good instead of re-entering
     bool isWaver;          // waver kinds only: TRUE from spawn, see enemy_spawnWaverFormation()
