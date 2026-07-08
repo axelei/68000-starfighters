@@ -36,6 +36,16 @@ void turrets_update(void);
 // through the game-over prompt).
 void turrets_hideAll(void);
 
+// Releases (SPR_releaseSprite) every currently-inactive turret's sprite
+// handle back to SGDK's pool and nulls it -- see boss.c's boss_begin(),
+// which reclaims these hardware sprite slots for its own sprites instead of
+// growing the game's total ever-allocated count (turrets are never active
+// during a boss encounter). Safe regardless of timing: only touches slots
+// already confirmed inactive. The existing lazy
+// `if (t->sprite == NULL) SPR_addSpriteEx(...)` in trySpawn() already
+// handles recreating it next time a turret spawns.
+void turrets_releaseIdleSprites(void);
+
 AABB turret_getBounds(const Turret *t);
 
 // Applies damage to the turret; kills it (explosion, score, chance of a

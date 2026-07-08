@@ -3,7 +3,12 @@
 #include "score.h"
 #include "terrain.h"
 #include "player.h"
+#include "boss.h"
 #include "waves_generated.h"
+
+// Every 5th wave slot is a boss encounter instead of the normal
+// interwave+wave pair -- see beginEncounter().
+#define BOSS_WAVE_INTERVAL 5
 
 // Playfield bounds an entering enemy is allowed to travel through -- must
 // never cross into the HUD panel (see game.h), so entrances swoop in from
@@ -40,6 +45,7 @@ static bool anyWaveSpawned;    // true once spawnWave() has run at least once th
 static u16 waveTimer;         // frames left before this wave's enemies are forced out
 static bool waveForcedOut;    // true once the forced dive-out has fired for this wave
 static bool inInterwave;      // TRUE while the pre-wave "waver" formation is on screen
+static bool inBossFight;      // TRUE while a boss encounter (see boss.c) is running
 
 static bool isSpecialSlot(const WaveDef *wave, u16 row, u16 col)
 {
@@ -116,6 +122,23 @@ static void beginInterwave(void)
     enemy_spawnWaverFormation(ENEMY_KIND_WAVER_A + (waveIndex % WAVER_KIND_COUNT));
 }
 
+// Every BOSS_WAVE_INTERVAL-th wave slot (5, 10, 15...) spawns a boss
+// encounter instead of the normal interwave+wave pair -- same modulo-on-
+// waveIndex dispatch pattern beginInterwave() already uses to pick a waver
+// kind, just choosing between two whole phases instead of a sprite/path.
+static void beginEncounter(void)
+{
+    if ((waveIndex % BOSS_WAVE_INTERVAL) == BOSS_WAVE_INTERVAL - 1)
+    {
+        inBossFight = TRUE;
+        boss_begin();
+    }
+    else
+    {
+        beginInterwave();
+    }
+}
+
 // Only shows the "WAVE N" banner -- the actual enemies don't swoop in until
 // it finishes (see formation_update()), so the announcement isn't competing
 // with combat for the player's attention.
@@ -142,7 +165,8 @@ void formation_init(void)
     waveTimer = 0;
     waveForcedOut = FALSE;
     inInterwave = FALSE;
-    beginInterwave();
+    inBossFight = FALSE;
+    beginEncounter();
 }
 
 void formation_update(void)
@@ -170,7 +194,7 @@ void formation_update(void)
         if (clearDelayTimer == 0)
         {
             waveIndex++;
-            beginInterwave();
+            beginEncounter();
         }
         return;
     }
@@ -179,7 +203,7 @@ void formation_update(void)
     // "GAME OVER" screen -- see main.c -- but the wave clock specifically
     // should freeze there rather than keep ticking down/hitting 0 while the
     // player can't do anything about it.
-    if (!inInterwave && !waveForcedOut && waveTimer > 0 && !player_isGameOver())
+    if (!inInterwave && !inBossFight && !waveForcedOut && waveTimer > 0 && !player_isGameOver())
     {
         waveTimer--;
         if (waveTimer == 0)
@@ -191,7 +215,23 @@ void formation_update(void)
         }
     }
 
-    if (inInterwave)
+    if (inBossFight)
+    {
+        if (!boss_isActive())
+        {
+            // Boss encounter resolved (killed or timed out) -- counts as
+            // this wave slot being done, same progression bump a regular
+            // cleared wave gets, then move on to the next slot's
+            // interwave+wave (or another boss, if BOSS_WAVE_INTERVAL ever
+            // shrinks to 1 -- beginEncounter() re-checks the modulo either
+            // way).
+            inBossFight = FALSE;
+            wavesCleared++;
+            waveIndex++;
+            beginEncounter();
+        }
+    }
+    else if (inInterwave)
     {
         // Not enemies_countActive() == 0 -- that also reads TRUE during the
         // brief pause between two inter-wave batches (see

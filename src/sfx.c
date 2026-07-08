@@ -11,9 +11,10 @@
 // installed SGDK's inc/psg.h if effects come out silent or at full volume
 // unexpectedly.
 
-#define SFX_CHANNEL_SHOOT    0
-#define SFX_CHANNEL_POWERUP  1
-#define SFX_CHANNEL_NOISE    3
+#define SFX_CHANNEL_SHOOT       0
+#define SFX_CHANNEL_POWERUP     1
+#define SFX_CHANNEL_DEATHSCREAM 2
+#define SFX_CHANNEL_NOISE       3
 
 typedef struct
 {
@@ -58,9 +59,27 @@ static const SfxStep explosionSteps[] = {
     {0, 15, 1},
 };
 
+// Boss death scream (see boss.c): a descending-pitch square-wave sweep on
+// the one PSG channel not already claimed by shoot/powerup/explosion --
+// tone *increasing* over the steps means pitch dropping (lower tone value =
+// higher pitch, see the note above), which reads as a falling "scream"
+// rather than a rising alarm. Plays simultaneously with the noise-channel
+// explosion (different channel, no conflict) for a combined scream+boom.
+static const SfxStep deathScreamSteps[] = {
+    {60,  0, 4},
+    {90,  1, 4},
+    {130, 2, 5},
+    {180, 4, 5},
+    {240, 7, 6},
+    {320, 10, 6},
+    {420, 13, 8},
+    {550, 15, 4},
+};
+
 static SfxChannelState shootState  = {shootSteps, 3, 0, 0, FALSE, SFX_CHANNEL_SHOOT, FALSE};
 static SfxChannelState powerupState = {powerupSteps, 4, 0, 0, FALSE, SFX_CHANNEL_POWERUP, FALSE};
 static SfxChannelState explosionState = {explosionSteps, 6, 0, 0, FALSE, SFX_CHANNEL_NOISE, TRUE};
+static SfxChannelState deathScreamState = {deathScreamSteps, 8, 0, 0, FALSE, SFX_CHANNEL_DEATHSCREAM, FALSE};
 
 void sfx_init(void)
 {
@@ -88,6 +107,11 @@ void sfx_play_explosion(void)
 {
     PSG_setNoise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_CLOCK4);
     startChannel(&explosionState);
+}
+
+void sfx_play_bossDeathScream(void)
+{
+    startChannel(&deathScreamState);
 }
 
 static void updateChannel(SfxChannelState *cs)
@@ -122,6 +146,7 @@ void sfx_update(void)
     updateChannel(&shootState);
     updateChannel(&powerupState);
     updateChannel(&explosionState);
+    updateChannel(&deathScreamState);
 }
 
 static void stopChannel(SfxChannelState *cs)
@@ -137,4 +162,5 @@ void sfx_stopAll(void)
     stopChannel(&shootState);
     stopChannel(&powerupState);
     stopChannel(&explosionState);
+    stopChannel(&deathScreamState);
 }

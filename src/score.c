@@ -50,6 +50,10 @@
 // (see formation.c's beginInterwave()/enemies_waverKillCount()).
 #define INTERWAVE_PERFECT_BONUS 1000
 
+// Awarded once, on the killing blow, for defeating a boss (see boss.c) --
+// points only, no separate bonus/powerup (per the confirmed design).
+#define POINTS_BOSS 5000
+
 static u32 score;
 static u32 displayedScore = 0xFFFFFFFF; // force first draw
 static u8 displayedLives = 0xFF;        // force first draw
@@ -139,6 +143,11 @@ void score_addTurretKill(void)
 void score_addInterwavePerfectBonus(void)
 {
     score += INTERWAVE_PERFECT_BONUS;
+}
+
+void score_addBossKill(void)
+{
+    score += POINTS_BOSS;
 }
 
 u32 score_getValue(void)

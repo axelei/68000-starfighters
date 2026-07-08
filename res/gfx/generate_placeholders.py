@@ -144,6 +144,28 @@ ENVIRONMENT_PAL = common4() + [
     shade(GRAY, 0.6),                 # 15 dark rock-gray
 ]
 
+# -- PAL_BOSS (PAL3): boss body/weak-spots, boss's homing bullet --
+# (only palette_boss.png -- i.e. boss_body_tl() below -- is ever loaded onto
+# hardware; every other boss-related image must use these same indices.)
+BOSS_HULL = (200, 40, 40)
+WEAKSPOT_BASE = (255, 190, 60)
+WEAKSPOT_HIT = (255, 50, 190)  # dedicated hit-flash color, distinct from the
+                                # generic white hit-flash every other enemy
+                                # uses -- see boss_weakspot()'s comment.
+WEAKSPOT_DEAD = (70, 70, 70)
+BOSS_PANEL = (110, 15, 15)
+
+BOSS_PAL = common4() + [
+    *triple(BOSS_HULL),         # 4 light, 5 base (hull), 6 dark
+    shade(BOSS_HULL, 0.4),      # 7 darkest hull shadow/panel line
+    *triple(WEAKSPOT_BASE),     # 8 light, 9 base (weak spot normal), 10 dark
+    WEAKSPOT_HIT,               # 11 weak spot / homing-bullet hit-flash
+    WEAKSPOT_DEAD,              # 12 destroyed weak-spot husk
+    BOSS_PANEL,                 # 13 dark red trim/panel accent
+    shade(BOSS_HULL, 1.7),      # 14 bright red highlight (also: homing bullet core)
+    shade(WEAKSPOT_BASE, 0.5),  # 15 dark amber
+]
+
 # -- title screen only (see title.c) -- briefly loaded onto PAL0, then
 # overwritten by PAL_PLAYER's real colors once gameplay starts.
 TITLE_BLUE = (90, 160, 255)
@@ -289,6 +311,99 @@ def enemy_waver_c():
         fill_rect(img, 1, 6, 15, 10, 11)
 
     return _enemy_frames(16, 16, draw)
+
+
+def boss_body():
+    # 2-row sheet (top-left quadrant / bottom-left quadrant), one shared
+    # PNG rather than two separate files -- boss.c creates all 4 of the
+    # body's Sprite objects from this single SpriteDefinition, picking
+    # frame 0 (TL) or frame 1 (BL) via SPR_setVRAMTileIndex, and mirroring
+    # each horizontally for the right-hand quadrants (TR/BR) instead of
+    # drawing separate right-side art -- the whole 64x64 silhouette only
+    # needs to be drawn once, left-right-symmetric, right here.
+    w = h = 64
+    full = new_indexed((w, h), BOSS_PAL)
+    cx, cy = 32, 32
+    for y in range(h):
+        for x in range(w):
+            dx, dy = abs(x - cx + 0.5), abs(y - cy + 0.5)
+            if dx * 0.9 + dy * 0.6 <= 30:  # broad diamond-ish hull
+                set_px(full, x, y, 5)  # hull base
+    fill_rect(full, 4, 30, 60, 34, 7)    # dark panel band across the middle
+    fill_rect(full, 26, 2, 38, 10, 14)   # bright nose highlight
+    fill_rect(full, 10, 44, 54, 48, 13)  # dark red trim, lower hull
+
+    combined = new_indexed((32, 64), BOSS_PAL)
+    for y in range(64):
+        for x in range(32):
+            set_px(combined, x, y, full.getpixel((x, y)))
+    return combined
+
+
+def boss_weakspot():
+    # 3-row sheet, one row per single-frame animation (normal / hit-flash /
+    # destroyed husk) -- same multi-row convention as _enemy_frames()/
+    # turret(), just 3 rows instead of 2. The hit-flash uses a dedicated
+    # color (WEAKSPOT_HIT) rather than the generic white every other enemy
+    # flashes to, per the design decision that the boss's own palette should
+    # visibly call out a hit.
+    w = h = 16
+    pal = BOSS_PAL
+
+    normal = new_indexed((w, h), pal)
+    cx, cy, r = 8, 8, 7
+    for y in range(h):
+        for x in range(w):
+            d2 = (x - cx + 0.5) ** 2 + (y - cy + 0.5) ** 2
+            if d2 <= r * r:
+                set_px(normal, x, y, 9)  # weak spot base (amber)
+    fill_rect(normal, 6, 6, 10, 10, 8)   # light core
+
+    flash = new_indexed((w, h), pal)
+    destroyed = new_indexed((w, h), pal)
+    for y in range(h):
+        for x in range(w):
+            if normal.getpixel((x, y)) != 0:
+                set_px(flash, x, y, 11)      # dedicated hit-flash color
+                set_px(destroyed, x, y, 12)  # husk gray
+
+    combined = new_indexed((w, h * 3), pal)
+    for frame_idx, frame in enumerate((normal, flash, destroyed)):
+        for y in range(h):
+            for x in range(w):
+                set_px(combined, x, y + frame_idx * h, frame.getpixel((x, y)))
+    return combined
+
+
+def bullet_homing():
+    # 2-row sheet (normal / hit-flash), 16x16 -- deliberately bigger and more
+    # distinct than the 8x8 bullet_enemy() disc, so the player can recognize
+    # it as a shootable threat rather than a normal bullet. Shares BOSS_PAL
+    # (it's only ever fired by the boss) rather than ENEMY_PAL.
+    w = h = 16
+    pal = BOSS_PAL
+
+    normal = new_indexed((w, h), pal)
+    cx, cy, r = 8, 8, 6
+    for y in range(h):
+        for x in range(w):
+            d2 = (x - cx + 0.5) ** 2 + (y - cy + 0.5) ** 2
+            if d2 <= r * r:
+                set_px(normal, x, y, 5)  # boss hull red glow
+    fill_rect(normal, 6, 6, 10, 10, 14)  # bright core
+
+    flash = new_indexed((w, h), pal)
+    for y in range(h):
+        for x in range(w):
+            if normal.getpixel((x, y)) != 0:
+                set_px(flash, x, y, 11)  # same dedicated hit-flash color as weak spots
+
+    combined = new_indexed((w, h * 2), pal)
+    for frame_idx, frame in enumerate((normal, flash)):
+        for y in range(h):
+            for x in range(w):
+                set_px(combined, x, y + frame_idx * h, frame.getpixel((x, y)))
+    return combined
 
 
 def explosion():
@@ -593,6 +708,9 @@ GENERATORS = {
     "enemy_waver_a.png": enemy_waver_a,
     "enemy_waver_b.png": enemy_waver_b,
     "enemy_waver_c.png": enemy_waver_c,
+    "boss_body.png": boss_body,
+    "boss_weakspot.png": boss_weakspot,
+    "bullet_homing.png": bullet_homing,
     "explosion.png": explosion,
     "title.png": title_image,
     "bullet_player.png": bullet_player,

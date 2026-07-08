@@ -4,6 +4,7 @@
 #include "enemy.h"
 #include "turret.h"
 #include "powerup.h"
+#include "boss.h"
 
 #define BULLET_DAMAGE 1
 
@@ -104,6 +105,70 @@ static void resolveEnemyThreatsVsPlayer(void)
 
     // Turrets are terrain-attached scenery, not a ramming threat -- only
     // their bullets can kill the player, not touching one directly.
+
+    // Boss body/weak-spot pods: same ramming rule as BIG -- touching it
+    // kills the player, but it never dies from the contact itself (only
+    // from its weak spots being shot down, see boss_hitWeakSpot()).
+    if (boss_isActive() && aabb_overlaps(pbox, boss_getBounds()))
+    {
+        player_kill();
+        return;
+    }
+}
+
+// Player bullets vs the boss's homing bullets -- the only "bullet vs
+// bullet" collision path in the game, since the homing bullet is the only
+// destructible one (see bullet_hitHoming()). Gated on boss_isActive() at
+// the call site since enemyBullets only ever holds a homing entry while a
+// boss fight is running.
+static void resolvePlayerBulletsVsHomingBullets(void)
+{
+    for (u16 bi = 0; bi < MAX_PLAYER_BULLETS; bi++)
+    {
+        Bullet *pb = &playerBullets[bi];
+        if (!pb->active)
+            continue;
+
+        AABB pboxBullet = bullet_getBounds(pb);
+
+        for (u16 ei = 0; ei < MAX_ENEMY_BULLETS; ei++)
+        {
+            Bullet *eb = &enemyBullets[ei];
+            if (!eb->active || !eb->isHoming)
+                continue;
+
+            if (aabb_overlaps(pboxBullet, bullet_getBounds(eb)))
+            {
+                bullet_hitHoming(eb, BULLET_DAMAGE);
+                bullet_deactivate(pb);
+                break;
+            }
+        }
+    }
+}
+
+// Player bullets vs each of the boss's weak spots (the only damageable part
+// of a boss -- see boss.h's design comment).
+static void resolvePlayerBulletsVsBoss(void)
+{
+    for (u16 bi = 0; bi < MAX_PLAYER_BULLETS; bi++)
+    {
+        Bullet *b = &playerBullets[bi];
+        if (!b->active)
+            continue;
+
+        AABB bbox = bullet_getBounds(b);
+
+        for (u16 wi = 0; wi < 2; wi++)
+        {
+            if (aabb_overlaps(bbox, boss_weakSpotBounds(wi)))
+            {
+                boss_hitWeakSpot(wi, BULLET_DAMAGE);
+                bullet_deactivate(b);
+                break;
+            }
+        }
+    }
 }
 
 static void resolvePlayerVsPowerups(void)
@@ -129,4 +194,10 @@ void collisions_resolve(void)
     resolvePlayerBulletsVsEnemies();
     resolveEnemyThreatsVsPlayer();
     resolvePlayerVsPowerups();
+
+    if (boss_isActive())
+    {
+        resolvePlayerBulletsVsHomingBullets();
+        resolvePlayerBulletsVsBoss();
+    }
 }

@@ -9,6 +9,7 @@
 #include "terrain.h"
 #include "formation.h"
 #include "sfx.h"
+#include "boss.h"
 
 // A clump is a spawn candidate once it's this close to scrolling into view
 // from the top (terrain_clumpScreenY() returns a negative "still above the
@@ -148,6 +149,12 @@ static const TerrainClump *findApproachingClump(void)
 
 static void trySpawn(void)
 {
+    // No new turrets during a boss encounter -- boss_begin() reclaims idle
+    // turret sprite handles for its own sprites (see
+    // turrets_releaseIdleSprites()), and spawning a fresh one here would
+    // immediately re-consume a handle it just freed.
+    if (boss_isActive())
+        return;
     // Never more than MAX_TURRETS at a time.
     if (countActive() >= MAX_TURRETS)
         return;
@@ -350,5 +357,18 @@ void turrets_hideAll(void)
 
         t->active = FALSE;
         SPR_setVisibility(t->sprite, HIDDEN);
+    }
+}
+
+void turrets_releaseIdleSprites(void)
+{
+    for (u16 i = 0; i < MAX_TURRETS; i++)
+    {
+        Turret *t = &turrets[i];
+        if (t->active || t->sprite == NULL)
+            continue;
+
+        SPR_releaseSprite(t->sprite);
+        t->sprite = NULL;
     }
 }

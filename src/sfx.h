@@ -13,6 +13,10 @@ void sfx_play_shoot(void);
 void sfx_play_explosion(void);
 void sfx_play_powerup(void);
 
+// Boss-only: descending-pitch scream on death (see boss.c). Plays alongside
+// sfx_play_explosion() (different PSG channel, no conflict).
+void sfx_play_bossDeathScream(void);
+
 // Immediately silences every channel and cancels any in-progress sequence
 // (called when leaving the game-over screen back to the title, so a sound
 // that was mid-playback doesn't keep running into the title screen).

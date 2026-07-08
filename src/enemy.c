@@ -896,3 +896,16 @@ void enemies_hideAll(void)
         SPR_setVisibility(e->sprite, HIDDEN);
     }
 }
+
+void enemies_releaseIdleSprites(void)
+{
+    for (u16 i = 0; i < MAX_ENEMIES; i++)
+    {
+        Enemy *e = &enemies[i];
+        if (e->active || e->sprite == NULL)
+            continue;
+
+        SPR_releaseSprite(e->sprite);
+        e->sprite = NULL;
+    }
+}

@@ -11,6 +11,9 @@ void score_addTurretKill(void);
 // Awarded once when every enemy in an inter-wave formation was shot down --
 // see formation.c's beginInterwave()/enemies_waverKillCount().
 void score_addInterwavePerfectBonus(void);
+
+// Awarded once, on the killing blow, for defeating a boss -- see boss.c.
+void score_addBossKill(void);
 void score_hud_update(void);
 u32 score_getValue(void);
 

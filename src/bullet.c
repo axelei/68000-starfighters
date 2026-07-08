@@ -1,11 +1,23 @@
 #include "bullet.h"
 #include "resources.h"
+#include "player.h"
+#include "explosion.h"
 
 Bullet playerBullets[MAX_PLAYER_BULLETS];
 Bullet enemyBullets[MAX_ENEMY_BULLETS];
 
 #define BULLET_SPR_W 8
 #define BULLET_SPR_H 8
+#define HOMING_SPR_W 16
+#define HOMING_SPR_H 16
+
+// Boss's homing bullet only (see bullet_spawn_enemy_homing()).
+#define HOMING_BULLET_HP           5
+#define HOMING_RETARGET_FRAMES     20  // one-shot re-aim interval -- not every tick, see the update below
+#define HOMING_TURN_STEP           FIX16(0.15) // max vx/vy nudge per retarget, towards the aimed direction
+#define HOMING_SPEED               FIX16(1.3)
+#define HOMING_HIT_FLASH_FRAMES    4
+#define HOMING_BLINK_OFF_FRAMES    3  // brief hidden pulse once per retarget cycle -- see the update below
 
 // Every player bullet looks identical (same for every enemy bullet), so
 // their tile graphics are uploaded to VRAM exactly once here rather than
@@ -18,6 +30,8 @@ Bullet enemyBullets[MAX_ENEMY_BULLETS];
 
 static u16 playerBulletTile;
 static u16 enemyBulletTile;
+static u16 homingBulletTile;
+static u16 homingBulletFlashTile;
 
 // Reloaded every time (no "already loaded" guard) -- see enemy.c's
 // loadSharedTiles for why: a soft reset clears VRAM but not this static
@@ -34,6 +48,16 @@ static void loadSharedTiles(void)
 
     idx = SPR_loadAllFrames(&spr_bullet_enemy, base, &totalTiles);
     enemyBulletTile = idx[0][0];
+    MEM_free(idx);
+    base += totalTiles;
+
+    // 2-row sheet (normal / hit-flash, see bullet_homing() in
+    // generate_placeholders.py) -- both frames are loaded up front and
+    // selected via SPR_setVRAMTileIndex, same convention as enemy.c's
+    // normalTile[]/flashTile[].
+    idx = SPR_loadAllFrames(&spr_bullet_homing, base, &totalTiles);
+    homingBulletTile = idx[0][0];
+    homingBulletFlashTile = idx[1][0];
     MEM_free(idx);
 }
 
@@ -55,8 +79,8 @@ void bullets_init(void)
     pool_init(enemyBullets, MAX_ENEMY_BULLETS);
 }
 
-static bool spawn(Bullet *pool, u16 count, const SpriteDefinition *def, u16 pal, u16 vramTile,
-                   fix16 x, fix16 y, fix16 vx, fix16 vy)
+static Bullet *spawn(Bullet *pool, u16 count, const SpriteDefinition *def, u16 pal, u16 vramTile,
+                      fix16 x, fix16 y, fix16 vx, fix16 vy)
 {
     for (u16 i = 0; i < count; i++)
     {
@@ -69,27 +93,70 @@ static bool spawn(Bullet *pool, u16 count, const SpriteDefinition *def, u16 pal,
         b->y = y;
         b->vx = vx;
         b->vy = vy;
+        // Always reset -- a slot previously used by a homing bullet (see
+        // bullet_spawn_enemy_homing()) must not leak isHoming/hp into a
+        // later ordinary enemy bullet reusing the same enemyBullets slot.
+        b->isHoming = FALSE;
+        b->hp = 0;
+        b->retargetTimer = 0;
+        b->flashTimer = 0;
         if (b->sprite == NULL)
             b->sprite = SPR_addSpriteEx(def, F16_toInt(x), F16_toInt(y),
                                          TILE_ATTR_FULL(pal, FALSE, FALSE, FALSE, vramTile), 0);
         else
         {
+            // This enemyBullets slot may have last held a different-sized
+            // bullet (an 8x8 ordinary shot vs. the 16x16 homing one --
+            // see bullet_spawn_enemy_homing()) -- SPR_setDefinition() fixes
+            // up the sprite's shape, same as enemy.c's enemy_spawn()/
+            // powerup.c's reuse path. Without this, a reused slot keeps
+            // its old size and only shows a fraction of the new tile data.
+            SPR_setDefinition(b->sprite, def);
+            SPR_setVRAMTileIndex(b->sprite, vramTile);
             SPR_setVisibility(b->sprite, VISIBLE);
             SPR_setPosition(b->sprite, F16_toInt(x), F16_toInt(y));
         }
-        return TRUE;
+        return b;
     }
-    return FALSE;
+    return NULL;
 }
 
 bool bullet_spawn_player(fix16 x, fix16 y, fix16 vx, fix16 vy)
 {
-    return spawn(playerBullets, MAX_PLAYER_BULLETS, &spr_bullet_player, PAL_PLAYER, playerBulletTile, x, y, vx, vy);
+    return spawn(playerBullets, MAX_PLAYER_BULLETS, &spr_bullet_player, PAL_PLAYER, playerBulletTile, x, y, vx, vy) != NULL;
 }
 
 bool bullet_spawn_enemy(fix16 x, fix16 y, fix16 vx, fix16 vy)
 {
-    return spawn(enemyBullets, MAX_ENEMY_BULLETS, &spr_bullet_enemy, PAL_ENEMY, enemyBulletTile, x, y, vx, vy);
+    return spawn(enemyBullets, MAX_ENEMY_BULLETS, &spr_bullet_enemy, PAL_ENEMY, enemyBulletTile, x, y, vx, vy) != NULL;
+}
+
+bool bullet_spawn_enemy_homing(fix16 x, fix16 y, fix16 vx, fix16 vy)
+{
+    Bullet *b = spawn(enemyBullets, MAX_ENEMY_BULLETS, &spr_bullet_homing, PAL_BOSS, homingBulletTile, x, y, vx, vy);
+    if (b == NULL)
+        return FALSE;
+
+    b->isHoming = TRUE;
+    b->hp = HOMING_BULLET_HP;
+    b->retargetTimer = HOMING_RETARGET_FRAMES;
+    return TRUE;
+}
+
+void bullet_hitHoming(Bullet *b, s16 damage)
+{
+    if (!b->isHoming)
+        return;
+
+    b->hp -= (s8) damage;
+    b->flashTimer = HOMING_HIT_FLASH_FRAMES;
+    SPR_setVRAMTileIndex(b->sprite, homingBulletFlashTile);
+
+    if (b->hp <= 0)
+    {
+        explosion_spawnAt(F16_toInt(b->x), F16_toInt(b->y));
+        bullet_deactivate(b);
+    }
 }
 
 void bullet_deactivate(Bullet *b)
@@ -97,6 +164,33 @@ void bullet_deactivate(Bullet *b)
     b->active = FALSE;
     if (b->sprite != NULL)
         SPR_setVisibility(b->sprite, HIDDEN);
+}
+
+// One-shot re-aim towards the player, computed only once every
+// HOMING_RETARGET_FRAMES (not every tick -- see the standing "no DIV/MUL
+// every tick" rule): normalizes the direction to the player exactly once,
+// then nudges vx/vy a fixed step towards it. The actual per-frame motion
+// (b->x/y += vx/vy) is a plain add, same as every other bullet.
+static void retarget(Bullet *b)
+{
+    fix16 dx = player.x - b->x;
+    fix16 dy = player.y - b->y;
+    if (dx > -FIX16(4) && dx < FIX16(4) && dy > -FIX16(4) && dy < FIX16(4))
+        return; // avoid a divide-by-near-zero if it's already right on the player
+
+    fix16 dist = (fix16) getApproximatedDistance(dx, dy);
+    fix16 aimVx = F16_mul(F16_div(dx, dist), HOMING_SPEED);
+    fix16 aimVy = F16_mul(F16_div(dy, dist), HOMING_SPEED);
+
+    fix16 dvx = aimVx - b->vx;
+    if (dvx > HOMING_TURN_STEP) dvx = HOMING_TURN_STEP;
+    else if (dvx < -HOMING_TURN_STEP) dvx = -HOMING_TURN_STEP;
+    b->vx += dvx;
+
+    fix16 dvy = aimVy - b->vy;
+    if (dvy > HOMING_TURN_STEP) dvy = HOMING_TURN_STEP;
+    else if (dvy < -HOMING_TURN_STEP) dvy = -HOMING_TURN_STEP;
+    b->vy += dvy;
 }
 
 static void update_pool(Bullet *pool, u16 count)
@@ -107,19 +201,57 @@ static void update_pool(Bullet *pool, u16 count)
         if (!b->active)
             continue;
 
+        if (b->isHoming)
+        {
+            if (b->retargetTimer > 0)
+            {
+                b->retargetTimer--;
+            }
+            else
+            {
+                retarget(b);
+                b->retargetTimer = HOMING_RETARGET_FRAMES;
+            }
+
+            if (b->flashTimer > 0)
+            {
+                b->flashTimer--;
+                if (b->flashTimer == 0)
+                    SPR_setVRAMTileIndex(b->sprite, homingBulletTile);
+            }
+        }
+
         b->x += b->vx;
         b->y += b->vy;
 
         s16 px = F16_toInt(b->x);
         s16 py = F16_toInt(b->y);
 
-        if (py < -BULLET_SPR_H || py > SCREEN_H || px < -BULLET_SPR_W || px > SCREEN_W)
+        u16 w = b->isHoming ? HOMING_SPR_W : BULLET_SPR_W;
+        u16 h = b->isHoming ? HOMING_SPR_H : BULLET_SPR_H;
+        if (py < -(s16) h || py > SCREEN_H || px < -(s16) w || px > SCREEN_W)
         {
             bullet_deactivate(b);
             continue;
         }
 
         SPR_setPosition(b->sprite, px, py);
+
+        // Blinks continuously (not just on hit) so the player can pick it
+        // out from ordinary enemy bullets as a shootable threat -- a short
+        // hidden pulse (HOMING_BLINK_OFF_FRAMES) near the end of each
+        // retarget cycle, not a 50/50 toggle, so it reads as mostly-visible
+        // with a brief blink rather than half-invisible the whole time.
+        // Reuses retargetTimer's countdown for the phase rather than a
+        // dedicated counter (it always counts down from a fixed value, so
+        // the blink lands at the same point in every cycle); suppressed
+        // while actually flashing from a hit so that reads clearly instead
+        // of blinking mid-flash.
+        if (b->isHoming)
+        {
+            bool blinkOff = b->retargetTimer < HOMING_BLINK_OFF_FRAMES;
+            SPR_setVisibility(b->sprite, (b->flashTimer > 0 || !blinkOff) ? VISIBLE : HIDDEN);
+        }
     }
 }
 

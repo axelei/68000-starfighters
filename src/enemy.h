@@ -119,6 +119,17 @@ u16 enemies_countActive(void);
 // formation doesn't hang frozen on screen through the game-over prompt).
 void enemies_hideAll(void);
 
+// Releases (SPR_releaseSprite) every currently-inactive enemy's sprite
+// handle back to SGDK's pool and nulls it -- see boss.c's boss_begin(),
+// which reclaims these hardware sprite slots for its own sprites instead of
+// growing the game's total ever-allocated count (formation.c already
+// guarantees enemies_countActive()==0 before a boss encounter can start, so
+// this always reclaims every enemy slot). Safe regardless of timing: only
+// touches slots already confirmed inactive. The existing lazy
+// `if (e->sprite == NULL) SPR_addSpriteEx(...)` in enemy_spawn() already
+// handles recreating it next time an enemy spawns.
+void enemies_releaseIdleSprites(void);
+
 // Sends every active enemy into (or keeps it in) ENEMY_STATE_DIVING_OUT from
 // wherever it currently is, marked so that once it scrolls off the bottom of
 // the screen it deactivates for good instead of re-entering -- see

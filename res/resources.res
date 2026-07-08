@@ -4,14 +4,20 @@
 // SPRITE width/height are in TILES (8px each), not pixels:
 //   SPRITE name img_file width height [compression [time [collision ...]]]
 
-// -- palettes -- 3 hardware palettes, one per consolidated group (see
-// generate_placeholders.py's module docstring for the full design). PAL3 is
-// currently unused/free. Title's own palette (below) briefly borrows PAL0
-// before title.c's title_fadeInGame() overwrites it with palette_player's
-// real colors, once gameplay starts.
+// -- palettes -- 4 hardware palettes, one per consolidated group (see
+// generate_placeholders.py's module docstring for the full design). Title's
+// own palette (below) briefly borrows PAL0 before title.c's
+// title_fadeInGame() overwrites it with palette_player's real colors, once
+// gameplay starts.
 PALETTE palette_player "gfx/player_ship.png"
 PALETTE palette_enemy  "gfx/enemy_bee.png"
 PALETTE palette_environment "gfx/terrain_tiles.png"
+
+// Boss body/weak-spots/homing bullet (see boss.c). Only this image's
+// PALETTE resource is ever loaded onto hardware (PAL3) -- every other
+// boss-related image below reuses these same indices (see
+// generate_placeholders.py's BOSS_PAL).
+PALETTE palette_boss "gfx/boss_body.png"
 
 // -- sprites (all single-frame placeholders for milestone 1)
 // 16x16px = 2x2 tiles, 8x8px = 1x1 tile
@@ -41,6 +47,18 @@ SPRITE spr_turret         "gfx/turret.png"         2 2 BEST
 SPRITE spr_enemy_waver_a  "gfx/enemy_waver_a.png"  2 2 BEST
 SPRITE spr_enemy_waver_b  "gfx/enemy_waver_b.png"  2 2 BEST
 SPRITE spr_enemy_waver_c  "gfx/enemy_waver_c.png"  2 2 BEST
+
+// Boss enemy (see boss.c) -- a 64x64 body built from 4 quadrants, all
+// created from this single 2-frame sheet (frame 0 = top-left, frame 1 =
+// bottom-left; the right-hand quadrants reuse the same tiles horizontally
+// mirrored at runtime, not separate art -- see
+// generate_placeholders.py's boss_body()), plus 2 independently
+// destructible 16x16 weak-spot pods (3-frame sheet: normal/hit-flash/
+// destroyed) and a dedicated 16x16 homing bullet (2-frame sheet:
+// normal/hit-flash). All share palette_boss (PAL3).
+SPRITE spr_boss_body      "gfx/boss_body.png"      4 4 BEST
+SPRITE spr_boss_weakspot  "gfx/boss_weakspot.png"  2 2 BEST
+SPRITE spr_bullet_homing  "gfx/bullet_homing.png"  2 2 BEST
 
 // -- title screen (see title.c). Bundles its own palette (loaded onto PAL0
 // when drawn) -- not one of the 3 shared gameplay hardware palettes.

@@ -5,15 +5,15 @@
 
 #include "settings.h"
 
-// Hardware palette assignments, consolidated to 3 groups that each use all
+// Hardware palette assignments, consolidated to 4 groups that each use all
 // 16 slots (transparent/black/white/gray + shades of that group's colors --
-// see generate_placeholders.py's module docstring). PAL3 is currently free.
-// Title's own palette (title.c) briefly borrows PAL0 before
-// title_fadeInGame() overwrites it with PAL_PLAYER's real colors, once
-// gameplay actually starts.
+// see generate_placeholders.py's module docstring). Title's own palette
+// (title.c) briefly borrows PAL0 before title_fadeInGame() overwrites it
+// with PAL_PLAYER's real colors, once gameplay actually starts.
 #define PAL_PLAYER      PAL0 // ship, bullets (player's), HUD, powerups
 #define PAL_ENEMY       PAL1 // bee/special/big, turret, explosion, enemy bullet, wavers
 #define PAL_ENVIRONMENT PAL2 // terrain + starfield
+#define PAL_BOSS        PAL3 // boss body/weak-spots, boss's homing bullet (see boss.c)
 
 // HUD panel: a static column on the right of the screen (see score.c), out
 // of the playfield the player/enemies move within.

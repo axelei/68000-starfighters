@@ -6,7 +6,7 @@
 // Seconds a wave's enemies get before the remaining ones are forced to dive
 // off screen for good (no score/powerups) and the next wave starts -- see
 // formation.c's waveTimer/enemies_forceDiveAllOut().
-#define WAVE_TIME_LIMIT_SECONDS 100
+#define WAVE_TIME_LIMIT_SECONDS 200
 
 // Seconds of pause between one inter-wave batch fully clearing and the next
 // appearing (see formation.c's beginInterwave()/enemy.c's
