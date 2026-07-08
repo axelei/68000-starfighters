@@ -160,26 +160,45 @@ ENVIRONMENT_PAL = common4() + [
 ]
 
 # -- PAL_BOSS (PAL3): boss body/weak-spots, boss's homing bullet --
-# (only palette_boss.png -- i.e. boss_body_tl() below -- is ever loaded onto
-# hardware; every other boss-related image must use these same indices.)
-BOSS_HULL = (200, 40, 40)
-WEAKSPOT_BASE = (255, 190, 60)
+# One roster of 5 distinct bosses (see boss.c's BossDef table) cycles
+# through wave 3/6/9/12/15 -- each gets its own hull/weak-spot/panel
+# colors (BOSS_KINDS below) baked into its own palette_boss_X.png, swapped
+# onto hardware PAL3 at boss_begin() time (not four *simultaneous*
+# palettes -- only one boss is ever active, so there's no budget conflict).
+# WEAKSPOT_HIT/WEAKSPOT_DEAD stay identical across every kind so the
+# "pink flash = hit" / "gray husk = destroyed" reads are consistent
+# regardless of which boss is on screen; bullet_homing() also keeps
+# reusing slot 11 for its own hit-flash for the same reason.
 WEAKSPOT_HIT = (255, 50, 190)  # dedicated hit-flash color, distinct from the
                                 # generic white hit-flash every other enemy
                                 # uses -- see boss_weakspot()'s comment.
 WEAKSPOT_DEAD = (70, 70, 70)
-BOSS_PANEL = (110, 15, 15)
 
-BOSS_PAL = common4() + [
-    *triple(BOSS_HULL),         # 4 light, 5 base (hull), 6 dark
-    shade(BOSS_HULL, 0.4),      # 7 darkest hull shadow/panel line
-    *triple(WEAKSPOT_BASE),     # 8 light, 9 base (weak spot normal), 10 dark
-    WEAKSPOT_HIT,               # 11 weak spot / homing-bullet hit-flash
-    WEAKSPOT_DEAD,              # 12 destroyed weak-spot husk
-    BOSS_PANEL,                 # 13 dark red trim/panel accent
-    shade(BOSS_HULL, 1.7),      # 14 bright red highlight (also: homing bullet core)
-    shade(WEAKSPOT_BASE, 0.5),  # 15 dark amber
+# Per-kind hull/weak-spot/panel hues -- silhouette shape varies too (see
+# BOSS_KINDS' body_fn), giving each roster slot a genuinely distinct look
+# rather than just a recolor. suffix matches resources.res's spr_boss_*_X /
+# palette_boss_X naming (a..e).
+BOSS_KINDS = [
+    dict(suffix="a", hull=(200, 40, 40),   weak=(255, 190, 60),  panel=(110, 15, 15)),   # crimson, diamond hull
+    dict(suffix="b", hull=(140, 60, 200),  weak=(120, 255, 180), panel=(70, 25, 110)),   # violet, blocky saucer hull
+    dict(suffix="c", hull=(40, 160, 90),   weak=(255, 230, 120), panel=(15, 90, 45)),    # emerald, round hull
+    dict(suffix="d", hull=(50, 120, 220),  weak=(230, 235, 255), panel=(20, 55, 110)),   # azure, spike hull
+    dict(suffix="e", hull=(230, 150, 30),  weak=(120, 200, 255), panel=(120, 70, 10)),   # amber, wing hull
 ]
+
+
+def boss_palette(kind):
+    hull, weak, panel = kind["hull"], kind["weak"], kind["panel"]
+    return common4() + [
+        *triple(hull),          # 4 light, 5 base (hull), 6 dark
+        shade(hull, 0.4),       # 7 darkest hull shadow/panel line
+        *triple(weak),          # 8 light, 9 base (weak spot normal), 10 dark
+        WEAKSPOT_HIT,           # 11 weak spot / homing-bullet hit-flash
+        WEAKSPOT_DEAD,          # 12 destroyed weak-spot husk
+        panel,                  # 13 dark trim/panel accent
+        shade(hull, 1.7),       # 14 bright highlight (also: homing bullet core)
+        shade(weak, 0.5),       # 15 dark accent
+    ]
 
 # -- title screen only (see title.c) -- briefly loaded onto PAL0, then
 # overwritten by PAL_PLAYER's real colors once gameplay starts.
@@ -328,42 +347,108 @@ def enemy_waver_c():
     return _enemy_frames(16, 16, draw)
 
 
-def boss_body():
+# -- Per-kind body silhouettes (left half only -- see boss_body()'s
+# comment on why only cols 0..31 of a 64x64 canvas are ever kept). Each
+# draws directly into `full` using hull index 5 for the base silhouette;
+# boss_body() layers the shared panel/highlight/trim accents on top
+# afterward so every kind gets the same "3 accent bands" read despite
+# different base shapes.
+def _silhouette_diamond(full, w, h):
+    cx, cy = w / 2, h / 2
+    for y in range(h):
+        for x in range(w):
+            dx, dy = abs(x - cx + 0.5), abs(y - cy + 0.5)
+            if dx * 0.9 + dy * 0.6 <= 30:
+                set_px(full, x, y, 5)
+
+
+def _silhouette_blocky(full, w, h):
+    # Saucer: a wide flat central band, tapering to a narrower top/bottom.
+    cy = h / 2
+    for y in range(h):
+        band_dist = abs(y - cy + 0.5)
+        half_width = 30 if band_dist <= 12 else max(0, 30 - (band_dist - 12) * 1.1)
+        x1 = int(half_width)
+        fill_rect(full, 0, y, min(w, x1), y + 1, 5)
+
+
+def _silhouette_round(full, w, h):
+    cx, cy, r = w / 2, h / 2, 30
+    for y in range(h):
+        for x in range(w):
+            d2 = (x - cx + 0.5) ** 2 + (y - cy + 0.5) ** 2
+            if d2 <= r * r:
+                set_px(full, x, y, 5)
+
+
+def _silhouette_spike(full, w, h):
+    # Forward-pointing spear: narrow nose, widening toward the tail.
+    for y in range(h):
+        half_width = int(2 + y * 0.45)
+        fill_rect(full, 0, y, min(w, half_width), y + 1, 5)
+
+
+def _silhouette_wing(full, w, h):
+    # Flat, angular wing: a wide central band with pointed tips, boxier
+    # than the diamond hull.
+    cy = h / 2
+    for y in range(h):
+        band_dist = abs(y - cy + 0.5)
+        if band_dist <= 6:
+            half_width = 30
+        elif band_dist <= 26:
+            half_width = 22
+        else:
+            half_width = max(0, 30 - band_dist)
+        fill_rect(full, 0, y, min(w, int(half_width)), y + 1, 5)
+
+
+_BOSS_SILHOUETTES = {
+    "a": _silhouette_diamond,
+    "b": _silhouette_blocky,
+    "c": _silhouette_round,
+    "d": _silhouette_spike,
+    "e": _silhouette_wing,
+}
+
+
+def boss_body(kind):
     # 2-row sheet (top-left quadrant / bottom-left quadrant), one shared
     # PNG rather than two separate files -- boss.c creates all 4 of the
     # body's Sprite objects from this single SpriteDefinition, picking
     # frame 0 (TL) or frame 1 (BL) via SPR_setVRAMTileIndex, and mirroring
     # each horizontally for the right-hand quadrants (TR/BR) instead of
     # drawing separate right-side art -- the whole 64x64 silhouette only
-    # needs to be drawn once, left-right-symmetric, right here.
+    # needs to be drawn once, left-right-symmetric, right here (the
+    # left-half-then-mirror trick makes any left-half shape read as
+    # symmetric in-game, so each kind's silhouette need not be symmetric
+    # on its own).
     w = h = 64
-    full = new_indexed((w, h), BOSS_PAL)
-    cx, cy = 32, 32
-    for y in range(h):
-        for x in range(w):
-            dx, dy = abs(x - cx + 0.5), abs(y - cy + 0.5)
-            if dx * 0.9 + dy * 0.6 <= 30:  # broad diamond-ish hull
-                set_px(full, x, y, 5)  # hull base
+    pal = boss_palette(kind)
+    full = new_indexed((w, h), pal)
+    _BOSS_SILHOUETTES[kind["suffix"]](full, w, h)
     fill_rect(full, 4, 30, 60, 34, 7)    # dark panel band across the middle
     fill_rect(full, 26, 2, 38, 10, 14)   # bright nose highlight
-    fill_rect(full, 10, 44, 54, 48, 13)  # dark red trim, lower hull
+    fill_rect(full, 10, 44, 54, 48, 13)  # dark trim, lower hull
 
-    combined = new_indexed((32, 64), BOSS_PAL)
+    combined = new_indexed((32, 64), pal)
     for y in range(64):
         for x in range(32):
             set_px(combined, x, y, full.getpixel((x, y)))
     return combined
 
 
-def boss_weakspot():
+def boss_weakspot(kind):
     # 3-row sheet, one row per single-frame animation (normal / hit-flash /
     # destroyed husk) -- same multi-row convention as _enemy_frames()/
     # turret(), just 3 rows instead of 2. The hit-flash uses a dedicated
     # color (WEAKSPOT_HIT) rather than the generic white every other enemy
     # flashes to, per the design decision that the boss's own palette should
-    # visibly call out a hit.
+    # visibly call out a hit. Same circular shape across every kind (only
+    # the recolor varies) -- the body silhouette is what carries each
+    # boss's distinct visual identity.
     w = h = 16
-    pal = BOSS_PAL
+    pal = boss_palette(kind)
 
     normal = new_indexed((w, h), pal)
     cx, cy, r = 8, 8, 7
@@ -371,7 +456,7 @@ def boss_weakspot():
         for x in range(w):
             d2 = (x - cx + 0.5) ** 2 + (y - cy + 0.5) ** 2
             if d2 <= r * r:
-                set_px(normal, x, y, 9)  # weak spot base (amber)
+                set_px(normal, x, y, 9)  # weak spot base
     fill_rect(normal, 6, 6, 10, 10, 8)   # light core
 
     flash = new_indexed((w, h), pal)
@@ -393,10 +478,15 @@ def boss_weakspot():
 def bullet_homing():
     # 2-row sheet (normal / hit-flash), 16x16 -- deliberately bigger and more
     # distinct than the 8x8 bullet_enemy() disc, so the player can recognize
-    # it as a shootable threat rather than a normal bullet. Shares BOSS_PAL
-    # (it's only ever fired by the boss) rather than ENEMY_PAL.
+    # it as a shootable threat rather than a normal bullet. Shares PAL_BOSS
+    # (it's only ever fired by the boss) rather than ENEMY_PAL -- one shared
+    # asset for every boss kind, since whichever kind's palette is currently
+    # swapped onto PAL3 recolors it automatically (indices 5/11/14 are the
+    # hull/hit-flash/highlight slots in every kind's palette -- see
+    # boss_palette()). Locally previewed with kind "a"'s colors; this
+    # doesn't matter at runtime since only pixel indices are used.
     w = h = 16
-    pal = BOSS_PAL
+    pal = boss_palette(BOSS_KINDS[0])
 
     normal = new_indexed((w, h), pal)
     cx, cy, r = 8, 8, 6
@@ -404,7 +494,7 @@ def bullet_homing():
         for x in range(w):
             d2 = (x - cx + 0.5) ** 2 + (y - cy + 0.5) ** 2
             if d2 <= r * r:
-                set_px(normal, x, y, 5)  # boss hull red glow
+                set_px(normal, x, y, 5)  # boss hull glow
     fill_rect(normal, 6, 6, 10, 10, 14)  # bright core
 
     flash = new_indexed((w, h), pal)
@@ -723,8 +813,8 @@ GENERATORS = {
     "enemy_waver_a.png": enemy_waver_a,
     "enemy_waver_b.png": enemy_waver_b,
     "enemy_waver_c.png": enemy_waver_c,
-    "boss_body.png": boss_body,
-    "boss_weakspot.png": boss_weakspot,
+    **{f"boss_body_{k['suffix']}.png": (lambda k=k: boss_body(k)) for k in BOSS_KINDS},
+    **{f"boss_weakspot_{k['suffix']}.png": (lambda k=k: boss_weakspot(k)) for k in BOSS_KINDS},
     "bullet_homing.png": bullet_homing,
     "explosion.png": explosion,
     "title.png": title_image,

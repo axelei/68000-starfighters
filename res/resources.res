@@ -13,11 +13,17 @@ PALETTE palette_player "gfx/player_ship.png"
 PALETTE palette_enemy  "gfx/enemy_bee.png"
 PALETTE palette_environment "gfx/terrain_tiles.png"
 
-// Boss body/weak-spots/homing bullet (see boss.c). Only this image's
-// PALETTE resource is ever loaded onto hardware (PAL3) -- every other
-// boss-related image below reuses these same indices (see
-// generate_placeholders.py's BOSS_PAL).
-PALETTE palette_boss "gfx/boss_body.png"
+// Boss roster (see boss.c's BossDef table) -- 5 distinct bosses cycling
+// every BOSS_WAVE_INTERVAL waves, each with its own body/weak-spot art and
+// palette. Only one is ever active at a time; boss_begin() swaps the
+// chosen kind's palette onto hardware PAL3 and reloads its body/weak-spot
+// tiles at that point (not all 5 loaded onto hardware simultaneously) --
+// see generate_placeholders.py's BOSS_KINDS/boss_palette().
+PALETTE palette_boss_a "gfx/boss_body_a.png"
+PALETTE palette_boss_b "gfx/boss_body_b.png"
+PALETTE palette_boss_c "gfx/boss_body_c.png"
+PALETTE palette_boss_d "gfx/boss_body_d.png"
+PALETTE palette_boss_e "gfx/boss_body_e.png"
 
 // -- sprites (all single-frame placeholders for milestone 1)
 // 16x16px = 2x2 tiles, 8x8px = 1x1 tile
@@ -48,17 +54,27 @@ SPRITE spr_enemy_waver_a  "gfx/enemy_waver_a.png"  2 2 BEST
 SPRITE spr_enemy_waver_b  "gfx/enemy_waver_b.png"  2 2 BEST
 SPRITE spr_enemy_waver_c  "gfx/enemy_waver_c.png"  2 2 BEST
 
-// Boss enemy (see boss.c) -- a 64x64 body built from 4 quadrants, all
-// created from this single 2-frame sheet (frame 0 = top-left, frame 1 =
-// bottom-left; the right-hand quadrants reuse the same tiles horizontally
-// mirrored at runtime, not separate art -- see
-// generate_placeholders.py's boss_body()), plus 2 independently
+// Boss roster's sprites (see boss.c) -- each kind's 64x64 body is built
+// from 4 quadrants, all created from that kind's own 2-frame sheet
+// (frame 0 = top-left, frame 1 = bottom-left; the right-hand quadrants
+// reuse the same tiles horizontally mirrored at runtime, not separate art
+// -- see generate_placeholders.py's boss_body()), plus 1-3 independently
 // destructible 16x16 weak-spot pods (3-frame sheet: normal/hit-flash/
-// destroyed) and a dedicated 16x16 homing bullet (2-frame sheet:
-// normal/hit-flash). All share palette_boss (PAL3).
-SPRITE spr_boss_body      "gfx/boss_body.png"      4 4 BEST
-SPRITE spr_boss_weakspot  "gfx/boss_weakspot.png"  2 2 BEST
-SPRITE spr_bullet_homing  "gfx/bullet_homing.png"  2 2 BEST
+// destroyed), count/placement varying per kind (see boss.c's BossDef).
+// The homing bullet is shared across every kind (2-frame sheet:
+// normal/hit-flash) -- its indices alias whichever kind's palette is
+// currently swapped onto PAL3, so it re-colors for free.
+SPRITE spr_boss_body_a      "gfx/boss_body_a.png"      4 4 BEST
+SPRITE spr_boss_body_b      "gfx/boss_body_b.png"      4 4 BEST
+SPRITE spr_boss_body_c      "gfx/boss_body_c.png"      4 4 BEST
+SPRITE spr_boss_body_d      "gfx/boss_body_d.png"      4 4 BEST
+SPRITE spr_boss_body_e      "gfx/boss_body_e.png"      4 4 BEST
+SPRITE spr_boss_weakspot_a  "gfx/boss_weakspot_a.png"  2 2 BEST
+SPRITE spr_boss_weakspot_b  "gfx/boss_weakspot_b.png"  2 2 BEST
+SPRITE spr_boss_weakspot_c  "gfx/boss_weakspot_c.png"  2 2 BEST
+SPRITE spr_boss_weakspot_d  "gfx/boss_weakspot_d.png"  2 2 BEST
+SPRITE spr_boss_weakspot_e  "gfx/boss_weakspot_e.png"  2 2 BEST
+SPRITE spr_bullet_homing    "gfx/bullet_homing.png"    2 2 BEST
 
 // -- title screen (see title.c). Bundles its own palette (loaded onto PAL0
 // when drawn) -- not one of the 3 shared gameplay hardware palettes.

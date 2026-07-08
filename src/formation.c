@@ -8,7 +8,7 @@
 
 // Every 5th wave slot is a boss encounter instead of the normal
 // interwave+wave pair -- see beginEncounter().
-#define BOSS_WAVE_INTERVAL 5
+#define BOSS_WAVE_INTERVAL 3
 
 // Playfield bounds an entering enemy is allowed to travel through -- must
 // never cross into the HUD panel (see game.h), so entrances swoop in from
@@ -125,7 +125,7 @@ static void beginInterwave(void)
     enemy_spawnWaverFormation(ENEMY_KIND_WAVER_A + (waveIndex % WAVER_KIND_COUNT));
 }
 
-// Every BOSS_WAVE_INTERVAL-th wave slot (5, 10, 15...) spawns a boss
+// Every BOSS_WAVE_INTERVAL-th wave slot (3, 6, 9...) spawns a boss
 // encounter instead of the normal interwave+wave pair -- same modulo-on-
 // waveIndex dispatch pattern beginInterwave() already uses to pick a waver
 // kind, just choosing between two whole phases instead of a sprite/path.
@@ -134,7 +134,11 @@ static void beginEncounter(void)
     if ((waveIndex % BOSS_WAVE_INTERVAL) == BOSS_WAVE_INTERVAL - 1)
     {
         inBossFight = TRUE;
-        boss_begin();
+        // waveIndex is 2, 5, 8, 11, 14... on boss waves, so /BOSS_WAVE_INTERVAL
+        // gives 0, 1, 2, 3, 4, 5... and %BOSS_KIND_COUNT cycles the whole
+        // 5-boss roster (see boss.c's BossDef table) once every 15 waves.
+        BossKind kind = (BossKind) ((waveIndex / BOSS_WAVE_INTERVAL) % BOSS_KIND_COUNT);
+        boss_begin(kind);
     }
     else
     {

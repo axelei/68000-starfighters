@@ -92,11 +92,16 @@ void title_run(void)
 
 void title_fadeInGame(void)
 {
+    // PAL3 (PAL_BOSS) is a placeholder here -- boss.c's roster (see its
+    // BossDef table) now swaps in whichever kind's own palette is active
+    // right before that encounter's sprites are ever drawn, so nothing
+    // actually reads PAL3 before then; palette_boss_a is just a reasonable
+    // default fill for this initial fade-in.
     u16 combined[64];
     memcpy(&combined[0],  palette_player.data,      16 * sizeof(u16));
     memcpy(&combined[16], palette_enemy.data,       16 * sizeof(u16));
     memcpy(&combined[32], palette_environment.data, 16 * sizeof(u16));
-    memcpy(&combined[48], palette_boss.data,        16 * sizeof(u16));
+    memcpy(&combined[48], palette_boss_a.data,      16 * sizeof(u16));
 
     PAL_fadeInAll(combined, FADE_FRAMES, FALSE);
 }

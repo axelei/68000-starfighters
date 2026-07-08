@@ -9,8 +9,8 @@
 #include "turret.h"
 #include "boss_patterns_generated.h"
 
-// -- body: 64x64, built from a single 2-frame sheet (spr_boss_body: frame 0
-// = top-left quadrant, frame 1 = bottom-left) -- top-right/bottom-right are
+// -- body: 64x64, built from a single 2-frame sheet per kind (frame 0 =
+// top-left quadrant, frame 1 = bottom-left) -- top-right/bottom-right are
 // the same tiles horizontally mirrored via TILE_ATTR_FULL's hflip flag, not
 // separate art (see generate_placeholders.py's boss_body()).
 #define BOSS_BODY_W 64
@@ -18,26 +18,20 @@
 #define BOSS_QUAD_W 32
 #define BOSS_QUAD_H 32
 
-// -- weak spots: 2 pods flanking the body, offset from the shared anchor
-// (bossX,bossY = body's top-left corner) -- same "read the parent's
+// -- weak spots: 1-3 pods per kind (see BossDef), offset from the shared
+// anchor (bossX,bossY = body's top-left corner) -- same "read the parent's
 // position every frame" convention turret.c uses for terrain clumps.
 #define WEAKSPOT_W 16
 #define WEAKSPOT_H 16
-// Meaningfully tougher than any regular enemy (HP_BIG in enemy.c is 100) --
-// a boss appearing only every 5 waves should be a real fight, not a single
-// BIG enemy split into two parts. At the player's ~7.5 shots/sec fire rate
-// (FIRE_COOLDOWN in player.c) this is roughly a minute of sustained,
-// accurately-aimed fire per pod -- comfortably inside the hidden 5-minute
-// limit even with dodging cutting into actual hit uptime.
-#define WEAKSPOT_HP 150
+#define MAX_WEAKSPOTS 3
 #define WEAKSPOT_HIT_FLASH_FRAMES 6 // short per-hit flash -- deliberately unscaled, see enemy.c's HIT_FLASH_FRAMES
-static const s16 weakSpotOffsetX[2] = {-8, BOSS_BODY_W - WEAKSPOT_W + 8};
-static const s16 weakSpotOffsetY[2] = {(BOSS_BODY_H - WEAKSPOT_H) / 2, (BOSS_BODY_H - WEAKSPOT_H) / 2};
 
-// -- anchors the boss repositions between (see BossPhase's MOVING) -- fixed
-// points near the top of the playfield, spaced so the 64px-wide body always
-// fits within PLAY_AREA_X_MIN/MAX.
-#define BOSS_ANCHOR_Y 24
+// -- horizontal anchors the boss repositions between (see BossPhase's
+// MOVING) -- fixed X points spaced so the 64px-wide body always fits
+// within PLAY_AREA_X_MIN/MAX. Shared by every kind. Every move cycles to
+// the next one, same as before this file grew the up/down dive below --
+// this is the "shifts a bit horizontally" part of each reposition.
+#define BOSS_ANCHOR_Y 24 // the "upper part" the boss returns to between dives
 #define BOSS_ANCHOR_COUNT 3
 static const s16 bossAnchorX[BOSS_ANCHOR_COUNT] = {
     PLAY_AREA_X_MIN + 8,
@@ -45,19 +39,26 @@ static const s16 bossAnchorX[BOSS_ANCHOR_COUNT] = {
     PLAY_AREA_X_MAX - BOSS_BODY_W - 8,
 };
 
+// From the top anchor row, the boss only occasionally dives down to a
+// random height in this range instead of every reposition -- most
+// repositions just shift horizontally along BOSS_ANCHOR_Y (see
+// boss_update()'s phase-transition block). Once down, it always returns to
+// the top next. Y range bounded so the 64px-tall body always stays within
+// the playfield (PLAY_AREA_Y_MAX - BOSS_BODY_H caps the low end).
+#define BOSS_DIVE_Y_MIN 40
+#define BOSS_DIVE_Y_MAX 136
+#define BOSS_DIVE_CHANCE_PCT 25 // 1-in-4 repositions from the top actually dives
+
 // PAL values throughout this file are NTSC * 50/60 (frame counts) or
 // NTSC * 1.2 (speeds) -- see game.h's REGION_PICK -- so real-world
 // pacing/speed stays the same regardless of the console's actual refresh
-// rate. BOSS_MOVE_SPEED_PX is the one exception that needs no pair: 2*1.2
-// rounds back down to 2, so there's nothing to switch between.
-#define BOSS_MOVE_SPEED_PX      2   // fixed speed -- duration derives from distance (see beginMove())
-#define BOSS_MOVE_MIN_FRAMES    REGION_PICK(20, 17)
-#define BOSS_ATTACK_PHASE_FRAMES REGION_PICK(240, 200) // ~4s per attack pattern before repositioning
+// rate.
+#define BOSS_MOVE_MIN_FRAMES    REGION_PICK(45, 38) // ~0.75s -- a floor even for a short hop, so repositioning always reads as a slow drift
 
 // Hidden 5-minute limit -- if the fight isn't resolved by then, the boss
 // dives off screen and disappears without awarding score (see
 // enemies_forceDiveAllOut()'s no-reward wave timeout for the analogous
-// regular-wave case).
+// regular-wave case). Shared by every kind.
 #define BOSS_TIME_LIMIT_FRAMES REGION_PICK(300 * 60, 300 * 50)
 
 typedef enum
@@ -65,9 +66,14 @@ typedef enum
     BOSS_ATTACK_SPREAD,
     BOSS_ATTACK_BURST,
     BOSS_ATTACK_RADIAL,
+    BOSS_ATTACK_CROSS,
+    BOSS_ATTACK_WALL,
 } BossAttackKind;
-#define BOSS_ATTACK_KIND_COUNT 3
 
+// -- shared attack-pattern library: every kind picks an ordered subset of
+// these (see BossDef's attackCycle) rather than each needing its own
+// bespoke bullet code. Speed/interval tuning is shared across kinds that
+// use a given pattern, same as before this roster existed.
 #define SPREAD_BULLET_COUNT   5
 #define SPREAD_FIRE_INTERVAL  REGION_PICK(60, 50)
 #define SPREAD_SPEED          REGION_PICK(FIX16(1.6), FIX16(1.92))
@@ -78,6 +84,28 @@ typedef enum
 #define BURST_SPEED           REGION_PICK(FIX16(1.8), FIX16(2.16))
 
 #define RADIAL_FIRE_INTERVAL  REGION_PICK(100, 83) // bossRadialVxNtsc/Pal (boss_patterns_generated.h) are already scaled to speed
+
+// Fixed 8-direction volley, not aimed at the player -- a distinct read from
+// the aimed SPREAD/BURST patterns. Directions are precomputed unit vectors
+// (N/NE/E/SE/S/SW/W/NW) scaled by CROSS_SPEED; no runtime trig needed.
+#define CROSS_DIRECTION_COUNT 8
+#define CROSS_FIRE_INTERVAL   REGION_PICK(70, 58)
+#define CROSS_SPEED           REGION_PICK(FIX16(1.5), FIX16(1.8))
+static const fix16 crossDirX[CROSS_DIRECTION_COUNT] = {
+    FIX16(0), FIX16(0.7071), FIX16(1), FIX16(0.7071), FIX16(0), FIX16(-0.7071), FIX16(-1), FIX16(-0.7071),
+};
+static const fix16 crossDirY[CROSS_DIRECTION_COUNT] = {
+    FIX16(-1), FIX16(-0.7071), FIX16(0), FIX16(0.7071), FIX16(1), FIX16(0.7071), FIX16(0), FIX16(-0.7071),
+};
+
+// A horizontal row of bullets spawned across the boss's width, staggered
+// one every WALL_SHOT_INTERVAL frames (same one-shot-per-tick shape as
+// BURST), constant slow downward velocity.
+#define WALL_BULLET_COUNT     5
+#define WALL_SHOT_INTERVAL    REGION_PICK(6, 5)
+#define WALL_COOLDOWN         REGION_PICK(110, 92)
+#define WALL_SPEED            REGION_PICK(FIX16(1.2), FIX16(1.44))
+static const s8 wallOffsetX[WALL_BULLET_COUNT] = {-24, -12, 0, 12, 24};
 
 #define HOMING_FIRE_INTERVAL  REGION_PICK(240, 200) // one homing bullet roughly every 4s, regardless of attack pattern
 #define HOMING_INITIAL_SPEED  REGION_PICK(FIX16(1.3), FIX16(1.56)) // must match bullet.c's HOMING_SPEED
@@ -98,84 +126,183 @@ typedef struct
     Sprite *sprite;
 } BossWeakSpot;
 
+// -- per-kind data (see boss.h's BossKind) -- everything that should
+// plausibly vary per boss (art, weak-spot count/placement/HP, attack mix,
+// move speed, attack-phase duration) lives here instead of a module-level
+// #define, so the roster is data-driven rather than 5 copy-pasted files.
+typedef struct
+{
+    const SpriteDefinition *bodySprite;
+    const SpriteDefinition *weakSpotSprite;
+    const Palette *palette;
+    u8 weakSpotCount;
+    s16 weakSpotOffsetX[MAX_WEAKSPOTS];
+    s16 weakSpotOffsetY[MAX_WEAKSPOTS];
+    s16 weakSpotHP;
+    const BossAttackKind *attackCycle;
+    u8 attackCycleLen;
+    // NTSC/PAL pairs, not single REGION_PICK(...) values -- REGION_PICK's
+    // IS_PAL_SYSTEM check is a runtime read, which can't appear inside a
+    // static const initializer (same restriction as sfx.c's SfxStep
+    // tables). beginMove()/beginAttackPhase() pick between these fields
+    // themselves instead, which is the same "two precalculated numbers,
+    // runtime choice" shape, just resolved at the read site rather than
+    // baked into the table.
+    //
+    // Two separate speeds (see beginMove()'s `slow` parameter): moveSpeed
+    // covers the intro/exit swoop and horizontal-only shifts along the top
+    // row (brisk -- these read as the boss actively maneuvering), while
+    // diveSpeed only applies to the vertical reposition when the boss
+    // dives to a random height or climbs back to the top (deliberately
+    // slow, a telegraphed drift rather than a dash -- see boss_update()'s
+    // phase-transition block).
+    fix16 moveSpeedNtsc; // px/frame -- duration derives from distance (see beginMove())
+    fix16 moveSpeedPal;
+    fix16 diveSpeedNtsc;
+    fix16 diveSpeedPal;
+    u16 attackPhaseFramesNtsc;
+    u16 attackPhaseFramesPal;
+} BossDef;
+
+static const BossAttackKind cycleA[] = {BOSS_ATTACK_SPREAD, BOSS_ATTACK_BURST, BOSS_ATTACK_RADIAL};
+static const BossAttackKind cycleB[] = {BOSS_ATTACK_BURST, BOSS_ATTACK_WALL, BOSS_ATTACK_CROSS};
+static const BossAttackKind cycleC[] = {BOSS_ATTACK_RADIAL, BOSS_ATTACK_CROSS, BOSS_ATTACK_SPREAD};
+static const BossAttackKind cycleD[] = {BOSS_ATTACK_WALL, BOSS_ATTACK_BURST, BOSS_ATTACK_RADIAL};
+static const BossAttackKind cycleE[] = {BOSS_ATTACK_SPREAD, BOSS_ATTACK_WALL, BOSS_ATTACK_CROSS};
+
+// Meaningfully tougher than any regular enemy (HP_BIG in enemy.c is 100) --
+// a boss appearing every 3 waves should be a real fight, not a single BIG
+// enemy split into parts. At the player's ~7.5 shots/sec fire rate
+// (FIRE_COOLDOWN in player.c) 150 HP is roughly a minute of sustained,
+// accurately-aimed fire per pod -- comfortably inside the hidden 5-minute
+// limit even with dodging cutting into actual hit uptime. Kind C (3 pods)
+// and D (1 big pod) scale the per-pod HP so the total effort stays in the
+// same ballpark.
+static const BossDef bossDefs[BOSS_KIND_COUNT] = {
+    // A -- crimson diamond hull, 2 side-flanking pods (the original layout).
+    {
+        &spr_boss_body_a, &spr_boss_weakspot_a, &palette_boss_a,
+        2,
+        {-8, BOSS_BODY_W - WEAKSPOT_W + 8, 0},
+        {(BOSS_BODY_H - WEAKSPOT_H) / 2, (BOSS_BODY_H - WEAKSPOT_H) / 2, 0},
+        150,
+        cycleA, 3,
+        FIX16(2), FIX16(2.4), FIX16(0.5), FIX16(0.6), 240, 200,
+    },
+    // B -- violet blocky saucer hull, 2 pods stacked top/bottom.
+    {
+        &spr_boss_body_b, &spr_boss_weakspot_b, &palette_boss_b,
+        2,
+        {(BOSS_BODY_W - WEAKSPOT_W) / 2, (BOSS_BODY_W - WEAKSPOT_W) / 2, 0},
+        {-8, BOSS_BODY_H - WEAKSPOT_H + 8, 0},
+        150,
+        cycleB, 3,
+        FIX16(2), FIX16(2.4), FIX16(0.5), FIX16(0.6), 180, 150,
+    },
+    // C -- emerald round hull, 3 pods in a triangular arrangement.
+    {
+        &spr_boss_body_c, &spr_boss_weakspot_c, &palette_boss_c,
+        3,
+        {-8, BOSS_BODY_W - WEAKSPOT_W + 8, (BOSS_BODY_W - WEAKSPOT_W) / 2},
+        {16, 16, 48},
+        110,
+        cycleC, 3,
+        FIX16(3), FIX16(3.6), FIX16(0.7), FIX16(0.84), 220, 183,
+    },
+    // D -- azure spike hull, a single large, tougher central pod.
+    {
+        &spr_boss_body_d, &spr_boss_weakspot_d, &palette_boss_d,
+        1,
+        {(BOSS_BODY_W - WEAKSPOT_W) / 2, 0, 0},
+        {(BOSS_BODY_H - WEAKSPOT_H) / 2, 0, 0},
+        300,
+        cycleD, 3,
+        FIX16(1), FIX16(1.2), FIX16(0.3), FIX16(0.36), 260, 217,
+    },
+    // E -- amber wing hull, 2 pods spread wide at the wingtips.
+    {
+        &spr_boss_body_e, &spr_boss_weakspot_e, &palette_boss_e,
+        2,
+        {-16, BOSS_BODY_W - WEAKSPOT_W + 16, 0},
+        {(BOSS_BODY_H - WEAKSPOT_H) / 2, (BOSS_BODY_H - WEAKSPOT_H) / 2, 0},
+        150,
+        cycleE, 3,
+        FIX16(3), FIX16(3.6), FIX16(0.7), FIX16(0.84), 200, 167,
+    },
+};
+
 // -- tile loading: boss's own VRAM tiles, based right after bullet.c's
 // (TILE_USER_INDEX+228: +1 player bullet, +1 enemy bullet, +8 for the
 // homing bullet's 2-frame x 4-tile-per-frame sheet -- see bullet.c's
-// BULLET_TILE_BASE) -- so this starts at +238 or later. (A previous +232
-// here overlapped the homing bullet's own tiles -- 2 tiles, not 8, were
-// budgeted for its sheet -- corrupting its pixel data once the boss's
-// tiles loaded on top of it.)
+// BULLET_TILE_BASE) -- so this starts at +238 or later. Only one kind's
+// tiles are ever resident at a time (loaded fresh in boss_begin(), not
+// boss_init() -- see its comment), so this budget only needs to fit a
+// single kind's body+weak-spot sheets, not all 5 kinds' worth.
 #define BOSS_TILE_BASE (TILE_USER_INDEX + 238)
 
-static u16 bodyTLTile, bodyBLTile; // frame 0/1 of the single spr_boss_body sheet
+static u16 bodyTLTile, bodyBLTile; // frame 0/1 of the active kind's body sheet
 static u16 weakSpotNormalTile, weakSpotFlashTile, weakSpotDestroyedTile;
 
 // Pause after the killing blow before the encounter actually ends (see
 // triggerDeath()) -- lets the death scream/explosions play out and gives
 // the player a breather instead of formation.c cutting straight to the
-// next wave the instant the last weak spot dies.
+// next wave the instant the last weak spot dies. Shared by every kind.
 #define BOSS_DEATH_DELAY_FRAMES REGION_PICK(90, 75) // 1.5s
 static bool dying;
 static u16 deathDelayTimer;
 
 static bool bossActive;
+static BossKind currentKind;
 static fix16 bossX, bossY; // anchor: body's top-left corner
 static fix16 bossVX, bossVY;
 static u16 moveTimer, moveDuration;
 static s16 moveTargetX, moveTargetY;
 static bool exitingAfterMove; // TRUE once the hidden timer has expired -- next arrival ends the fight, no score
 static u8 anchorIndex;
+static bool bossAtTop; // TRUE while at the top row (next reposition rolls a chance to dive); FALSE while down (next reposition always returns to the top)
 
 static BossPhase phase;
 static u16 phaseTimer; // frames remaining in the current ATTACKING phase
 static BossAttackKind currentAttack;
+static u8 attackCycleIndex; // index into bossDefs[currentKind].attackCycle
 static u16 lifeTimer;
 
 static Sprite *bodyTL, *bodyTR, *bodyBL, *bodyBR;
-static BossWeakSpot weakSpots[2];
+static BossWeakSpot weakSpots[MAX_WEAKSPOTS];
 
 // Per-attack-kind firing state.
 static u16 spreadFireTimer;
 static u8 burstShotsLeft;
 static u16 burstTimer;
 static u16 radialFireTimer;
+static u16 crossFireTimer;
+static u8 wallShotsLeft;
+static u16 wallTimer;
 static u16 homingFireTimer;
 
 void boss_init(void)
 {
     bossActive = FALSE;
 
-    u16 totalTiles;
-    u16 base = BOSS_TILE_BASE;
-
-    u16 **idx = SPR_loadAllFrames(&spr_boss_body, base, &totalTiles);
-    bodyTLTile = idx[0][0];
-    bodyBLTile = idx[1][0];
-    MEM_free(idx);
-    base += totalTiles;
-
-    idx = SPR_loadAllFrames(&spr_boss_weakspot, base, &totalTiles);
-    weakSpotNormalTile = idx[0][0];
-    weakSpotFlashTile = idx[1][0];
-    weakSpotDestroyedTile = idx[2][0];
-    MEM_free(idx);
-
-    // Sprite handles intentionally left NULL here (not created yet) -- see
-    // boss_begin()/boss_end(), which create/release them once per encounter
-    // rather than keeping them forever, to reclaim the enemy/turret pools'
-    // slots instead of growing the game's total ever-allocated sprite count
-    // (see enemies_releaseIdleSprites()'s comment).
+    // Sprite handles/VRAM tiles intentionally NOT loaded here -- see
+    // boss_begin(), which loads the chosen kind's tiles and creates its
+    // sprites once per encounter rather than keeping one fixed art set
+    // forever, so the roster's 5 kinds can share the same VRAM tile range
+    // and sprite handles instead of each needing its own permanent slice.
     bodyTL = bodyTR = bodyBL = bodyBR = NULL;
-    weakSpots[0].sprite = NULL;
-    weakSpots[1].sprite = NULL;
+    for (u16 i = 0; i < MAX_WEAKSPOTS; i++)
+        weakSpots[i].sprite = NULL;
 }
 
 // One-shot glide setup: computes vx/vy once (a single division, not
 // per-tick -- same convention as every other entrance/dive in this
-// codebase) from the current position to (targetX,targetY) at a fixed
-// speed, so travel time scales with distance instead of being a fixed
-// duration that would look too fast/slow depending on how far it's going.
-static void beginMove(s16 targetX, s16 targetY)
+// codebase) from the current position to (targetX,targetY), so travel time
+// scales with distance instead of being a fixed duration that would look
+// too fast/slow depending on how far it's going. `slow` selects the
+// active kind's diveSpeed (vertical repositions: dive down/climb back to
+// the top) instead of its brisker moveSpeed (intro/exit swoops and
+// horizontal-only shifts along the top row) -- see BossDef's comment.
+static void beginMove(s16 targetX, s16 targetY, bool slow)
 {
     s16 fromX = F16_toInt(bossX);
     s16 fromY = F16_toInt(bossY);
@@ -185,7 +312,13 @@ static void beginMove(s16 targetX, s16 targetY)
     if (dy < 0) dy = -dy;
     s16 dist = (dx > dy) ? dx : dy;
 
-    u16 duration = (u16) (dist / BOSS_MOVE_SPEED_PX);
+    const BossDef *def = &bossDefs[currentKind];
+    fix16 speed;
+    if (slow)
+        speed = IS_PAL_SYSTEM ? def->diveSpeedPal : def->diveSpeedNtsc;
+    else
+        speed = IS_PAL_SYSTEM ? def->moveSpeedPal : def->moveSpeedNtsc;
+    u16 duration = (u16) F16_toInt(F16_div(FIX16(dist), speed));
     if (duration < BOSS_MOVE_MIN_FRAMES)
         duration = BOSS_MOVE_MIN_FRAMES;
 
@@ -201,15 +334,22 @@ static void beginMove(s16 targetX, s16 targetY)
 static void beginAttackPhase(void)
 {
     phase = BOSS_PHASE_ATTACKING;
-    phaseTimer = BOSS_ATTACK_PHASE_FRAMES;
+    const BossDef *def = &bossDefs[currentKind];
+    phaseTimer = IS_PAL_SYSTEM ? def->attackPhaseFramesPal : def->attackPhaseFramesNtsc;
     spreadFireTimer = SPREAD_FIRE_INTERVAL / 2; // stagger the first shot in a bit, not instantly on arrival
     burstShotsLeft = 0;
     burstTimer = BURST_COOLDOWN;
     radialFireTimer = RADIAL_FIRE_INTERVAL;
+    crossFireTimer = CROSS_FIRE_INTERVAL / 2;
+    wallShotsLeft = 0;
+    wallTimer = WALL_COOLDOWN;
 }
 
-void boss_begin(void)
+void boss_begin(BossKind kind)
 {
+    currentKind = kind;
+    const BossDef *def = &bossDefs[kind];
+
     bossActive = TRUE;
 
     // Reclaim hardware sprite slots from the two pools guaranteed idle
@@ -217,11 +357,33 @@ void boss_begin(void)
     enemies_releaseIdleSprites();
     turrets_releaseIdleSprites();
 
+    // Load this kind's body/weak-spot tiles into the shared boss VRAM
+    // range and swap its colors onto hardware PAL3 -- see BOSS_TILE_BASE's
+    // comment on why only one kind's art needs to be resident at a time.
+    u16 totalTiles;
+    u16 base = BOSS_TILE_BASE;
+
+    u16 **idx = SPR_loadAllFrames(def->bodySprite, base, &totalTiles);
+    bodyTLTile = idx[0][0];
+    bodyBLTile = idx[1][0];
+    MEM_free(idx);
+    base += totalTiles;
+
+    idx = SPR_loadAllFrames(def->weakSpotSprite, base, &totalTiles);
+    weakSpotNormalTile = idx[0][0];
+    weakSpotFlashTile = idx[1][0];
+    weakSpotDestroyedTile = idx[2][0];
+    MEM_free(idx);
+
+    PAL_setPalette(PAL_BOSS, def->palette->data, DMA);
+
     lifeTimer = BOSS_TIME_LIMIT_FRAMES;
     exitingAfterMove = FALSE;
     dying = FALSE;
     anchorIndex = 0;
-    currentAttack = BOSS_ATTACK_SPREAD;
+    bossAtTop = TRUE; // the intro swoop below lands at BOSS_ANCHOR_Y
+    attackCycleIndex = 0;
+    currentAttack = def->attackCycle[0];
     homingFireTimer = HOMING_FIRE_INTERVAL;
 
     s16 startX = bossAnchorX[0];
@@ -229,9 +391,9 @@ void boss_begin(void)
     bossX = FIX16(startX);
     bossY = FIX16(startY);
 
-    for (u16 i = 0; i < 2; i++)
+    for (u16 i = 0; i < def->weakSpotCount; i++)
     {
-        weakSpots[i].hp = WEAKSPOT_HP;
+        weakSpots[i].hp = def->weakSpotHP;
         weakSpots[i].hitFlashTimer = 0;
         weakSpots[i].destroyed = FALSE;
     }
@@ -246,40 +408,48 @@ void boss_begin(void)
     u16 blAttr = TILE_ATTR_FULL(PAL_BOSS, FALSE, FALSE, FALSE, bodyBLTile);
     u16 brAttr = TILE_ATTR_FULL(PAL_BOSS, FALSE, FALSE, TRUE, bodyBLTile); // hflip of BL
 
-    if (bodyTL == NULL) bodyTL = SPR_addSpriteEx(&spr_boss_body, tlx, tly, tlAttr, 0);
-    else { SPR_setVRAMTileIndex(bodyTL, bodyTLTile); SPR_setVisibility(bodyTL, VISIBLE); SPR_setPosition(bodyTL, tlx, tly); }
+    if (bodyTL == NULL) bodyTL = SPR_addSpriteEx(def->bodySprite, tlx, tly, tlAttr, 0);
+    else { SPR_setDefinition(bodyTL, def->bodySprite); SPR_setVRAMTileIndex(bodyTL, bodyTLTile); SPR_setHFlip(bodyTL, FALSE); SPR_setVisibility(bodyTL, VISIBLE); SPR_setPosition(bodyTL, tlx, tly); }
 
-    if (bodyTR == NULL) bodyTR = SPR_addSpriteEx(&spr_boss_body, trx, try_, trAttr, 0);
-    else { SPR_setVRAMTileIndex(bodyTR, bodyTLTile); SPR_setVisibility(bodyTR, VISIBLE); SPR_setPosition(bodyTR, trx, try_); }
+    if (bodyTR == NULL) bodyTR = SPR_addSpriteEx(def->bodySprite, trx, try_, trAttr, 0);
+    else { SPR_setDefinition(bodyTR, def->bodySprite); SPR_setVRAMTileIndex(bodyTR, bodyTLTile); SPR_setVisibility(bodyTR, VISIBLE); SPR_setPosition(bodyTR, trx, try_); }
     SPR_setHFlip(bodyTR, TRUE);
 
-    if (bodyBL == NULL) bodyBL = SPR_addSpriteEx(&spr_boss_body, blx, bly, blAttr, 0);
-    else { SPR_setVRAMTileIndex(bodyBL, bodyBLTile); SPR_setVisibility(bodyBL, VISIBLE); SPR_setPosition(bodyBL, blx, bly); }
+    if (bodyBL == NULL) bodyBL = SPR_addSpriteEx(def->bodySprite, blx, bly, blAttr, 0);
+    else { SPR_setDefinition(bodyBL, def->bodySprite); SPR_setVRAMTileIndex(bodyBL, bodyBLTile); SPR_setHFlip(bodyBL, FALSE); SPR_setVisibility(bodyBL, VISIBLE); SPR_setPosition(bodyBL, blx, bly); }
 
-    if (bodyBR == NULL) bodyBR = SPR_addSpriteEx(&spr_boss_body, brx, bry, brAttr, 0);
-    else { SPR_setVRAMTileIndex(bodyBR, bodyBLTile); SPR_setVisibility(bodyBR, VISIBLE); SPR_setPosition(bodyBR, brx, bry); }
+    if (bodyBR == NULL) bodyBR = SPR_addSpriteEx(def->bodySprite, brx, bry, brAttr, 0);
+    else { SPR_setDefinition(bodyBR, def->bodySprite); SPR_setVRAMTileIndex(bodyBR, bodyBLTile); SPR_setVisibility(bodyBR, VISIBLE); SPR_setPosition(bodyBR, brx, bry); }
     SPR_setHFlip(bodyBR, TRUE);
 
-    for (u16 i = 0; i < 2; i++)
+    for (u16 i = 0; i < def->weakSpotCount; i++)
     {
-        s16 wx = startX + weakSpotOffsetX[i];
-        s16 wy = startY + weakSpotOffsetY[i];
+        s16 wx = startX + def->weakSpotOffsetX[i];
+        s16 wy = startY + def->weakSpotOffsetY[i];
         u16 attr = TILE_ATTR_FULL(PAL_BOSS, FALSE, FALSE, FALSE, weakSpotNormalTile);
         if (weakSpots[i].sprite == NULL)
             // SPR_FLAG_INSERT_HEAD -- weak spots must draw in front of the
             // body (they're created after it, and sprites later in the
             // list render underneath earlier ones), not get hidden behind it.
-            weakSpots[i].sprite = SPR_addSpriteEx(&spr_boss_weakspot, wx, wy, attr, SPR_FLAG_INSERT_HEAD);
+            weakSpots[i].sprite = SPR_addSpriteEx(def->weakSpotSprite, wx, wy, attr, SPR_FLAG_INSERT_HEAD);
         else
         {
+            SPR_setDefinition(weakSpots[i].sprite, def->weakSpotSprite);
             SPR_setVRAMTileIndex(weakSpots[i].sprite, weakSpotNormalTile);
             SPR_setHFlip(weakSpots[i].sprite, FALSE);
             SPR_setVisibility(weakSpots[i].sprite, VISIBLE);
             SPR_setPosition(weakSpots[i].sprite, wx, wy);
         }
     }
+    // Any leftover pod sprite from a previous, higher-weak-spot-count kind
+    // (e.g. kind C's 3rd pod, if the last encounter was C and this one
+    // isn't) stays hidden rather than released -- it's just not touched
+    // above, so hide it explicitly here.
+    for (u16 i = def->weakSpotCount; i < MAX_WEAKSPOTS; i++)
+        if (weakSpots[i].sprite != NULL)
+            SPR_setVisibility(weakSpots[i].sprite, HIDDEN);
 
-    beginMove(bossAnchorX[0], BOSS_ANCHOR_Y);
+    beginMove(bossAnchorX[0], BOSS_ANCHOR_Y, FALSE); // intro swoop -- brisk, not the slow dive speed
 }
 
 // Releases every one of the boss's own sprite handles (see boss_begin()'s
@@ -291,8 +461,8 @@ static void releaseSprites(void)
     if (bodyTR != NULL) { SPR_releaseSprite(bodyTR); bodyTR = NULL; }
     if (bodyBL != NULL) { SPR_releaseSprite(bodyBL); bodyBL = NULL; }
     if (bodyBR != NULL) { SPR_releaseSprite(bodyBR); bodyBR = NULL; }
-    if (weakSpots[0].sprite != NULL) { SPR_releaseSprite(weakSpots[0].sprite); weakSpots[0].sprite = NULL; }
-    if (weakSpots[1].sprite != NULL) { SPR_releaseSprite(weakSpots[1].sprite); weakSpots[1].sprite = NULL; }
+    for (u16 i = 0; i < MAX_WEAKSPOTS; i++)
+        if (weakSpots[i].sprite != NULL) { SPR_releaseSprite(weakSpots[i].sprite); weakSpots[i].sprite = NULL; }
 }
 
 static void endFight(void)
@@ -316,17 +486,22 @@ void boss_hideAll(void)
     if (bodyTR != NULL) SPR_setVisibility(bodyTR, HIDDEN);
     if (bodyBL != NULL) SPR_setVisibility(bodyBL, HIDDEN);
     if (bodyBR != NULL) SPR_setVisibility(bodyBR, HIDDEN);
-    if (weakSpots[0].sprite != NULL) SPR_setVisibility(weakSpots[0].sprite, HIDDEN);
-    if (weakSpots[1].sprite != NULL) SPR_setVisibility(weakSpots[1].sprite, HIDDEN);
+    for (u16 i = 0; i < MAX_WEAKSPOTS; i++)
+        if (weakSpots[i].sprite != NULL) SPR_setVisibility(weakSpots[i].sprite, HIDDEN);
 }
 
 AABB boss_getBounds(void)
 {
-    // Broad box covering the body plus both flanking pods (see
-    // weakSpotOffsetX's -8/+8 spill past the body's own edges) -- used only
-    // for the player-ram-death check, not bullet-vs-weak-spot precision.
-    AABB box = {F16_toInt(bossX) - 8, F16_toInt(bossY), BOSS_BODY_W + 16, BOSS_BODY_H};
+    // Broad box covering the body plus every flanking pod (see
+    // weakSpotOffsetX's spill past the body's own edges) -- used only for
+    // the player-ram-death check, not bullet-vs-weak-spot precision.
+    AABB box = {F16_toInt(bossX) - 16, F16_toInt(bossY), BOSS_BODY_W + 32, BOSS_BODY_H};
     return box;
+}
+
+u16 boss_weakSpotCount(void)
+{
+    return bossDefs[currentKind].weakSpotCount;
 }
 
 AABB boss_weakSpotBounds(u16 index)
@@ -337,9 +512,10 @@ AABB boss_weakSpotBounds(u16 index)
         return empty;
     }
 
+    const BossDef *def = &bossDefs[currentKind];
     AABB box = {
-        F16_toInt(bossX) + weakSpotOffsetX[index],
-        F16_toInt(bossY) + weakSpotOffsetY[index],
+        F16_toInt(bossX) + def->weakSpotOffsetX[index],
+        F16_toInt(bossY) + def->weakSpotOffsetY[index],
         WEAKSPOT_W, WEAKSPOT_H,
     };
     return box;
@@ -383,7 +559,10 @@ void boss_hitWeakSpot(u16 index, s16 damage)
         ws->hitFlashTimer = 0;
         SPR_setVRAMTileIndex(ws->sprite, weakSpotDestroyedTile);
 
-        if (weakSpots[0].destroyed && weakSpots[1].destroyed)
+        bool allDestroyed = TRUE;
+        for (u16 i = 0; i < bossDefs[currentKind].weakSpotCount; i++)
+            if (!weakSpots[i].destroyed) { allDestroyed = FALSE; break; }
+        if (allDestroyed)
             triggerDeath();
         return;
     }
@@ -426,6 +605,12 @@ static void fireSpread(fix16 originX, fix16 originY)
         fix16 vy = aimVy + F16_mul(perpVy, FIX16(0.3)) * k;
         bullet_spawn_enemy(originX, originY, vx, vy);
     }
+}
+
+static void fireCross(fix16 originX, fix16 originY)
+{
+    for (u16 i = 0; i < CROSS_DIRECTION_COUNT; i++)
+        bullet_spawn_enemy(originX, originY, F16_mul(crossDirX[i], CROSS_SPEED), F16_mul(crossDirY[i], CROSS_SPEED));
 }
 
 static void updateAttack(fix16 originX, fix16 originY)
@@ -488,6 +673,41 @@ static void updateAttack(fix16 originX, fix16 originY)
                 radialFireTimer = RADIAL_FIRE_INTERVAL;
             }
             break;
+
+        case BOSS_ATTACK_CROSS:
+            if (crossFireTimer > 0)
+                crossFireTimer--;
+            else
+            {
+                fireCross(originX, originY);
+                crossFireTimer = CROSS_FIRE_INTERVAL;
+            }
+            break;
+
+        case BOSS_ATTACK_WALL:
+            if (wallShotsLeft > 0)
+            {
+                if (wallTimer > 0)
+                    wallTimer--;
+                else
+                {
+                    u16 shotIndex = WALL_BULLET_COUNT - wallShotsLeft;
+                    bullet_spawn_enemy(originX + FIX16(wallOffsetX[shotIndex]), originY, 0, WALL_SPEED);
+                    wallShotsLeft--;
+                    wallTimer = WALL_SHOT_INTERVAL;
+                }
+            }
+            else if (wallTimer > 0)
+            {
+                wallTimer--;
+            }
+            else
+            {
+                wallShotsLeft = WALL_BULLET_COUNT - 1;
+                bullet_spawn_enemy(originX + FIX16(wallOffsetX[0]), originY, 0, WALL_SPEED);
+                wallTimer = WALL_SHOT_INTERVAL;
+            }
+            break;
     }
 
     if (homingFireTimer > 0)
@@ -518,7 +738,7 @@ void boss_update(void)
 
     if (dying)
     {
-        // Frozen in place (both weak spots already show their destroyed
+        // Frozen in place (every weak spot already shows its destroyed
         // husk) while the death scream/staggered explosions play out --
         // see triggerDeath(). boss_isActive() stays TRUE for this whole
         // delay, so formation.c doesn't cut to the next wave early.
@@ -539,9 +759,11 @@ void boss_update(void)
         if (lifeTimer == 0)
         {
             exitingAfterMove = TRUE;
-            beginMove(F16_toInt(bossX), SCREEN_H + BOSS_BODY_H);
+            beginMove(F16_toInt(bossX), SCREEN_H + BOSS_BODY_H, FALSE); // exit swoop -- brisk, same as the intro
         }
     }
+
+    const BossDef *def = &bossDefs[currentKind];
 
     if (phase == BOSS_PHASE_MOVING)
     {
@@ -573,8 +795,41 @@ void boss_update(void)
         if (phaseTimer == 0)
         {
             anchorIndex = (anchorIndex + 1) % BOSS_ANCHOR_COUNT;
-            currentAttack = (BossAttackKind) ((currentAttack + 1) % BOSS_ATTACK_KIND_COUNT);
-            beginMove(bossAnchorX[anchorIndex], BOSS_ANCHOR_Y);
+            attackCycleIndex = (attackCycleIndex + 1) % def->attackCycleLen;
+            currentAttack = def->attackCycle[attackCycleIndex];
+
+            // From the top, only occasionally dive down to a random height
+            // (see BOSS_DIVE_CHANCE_PCT) -- most repositions just shift to
+            // the next horizontal anchor along the top row instead. Once
+            // down, always return to the top next. `verticalMove` is TRUE
+            // exactly when this reposition actually changes height (dive
+            // or climb-back), so beginMove() uses the slow diveSpeed only
+            // then -- a pure horizontal shift along the top row stays at
+            // the brisk moveSpeed.
+            s16 targetY;
+            bool verticalMove;
+            if (bossAtTop)
+            {
+                bool dive = (random() % 100) < BOSS_DIVE_CHANCE_PCT;
+                if (dive)
+                {
+                    targetY = BOSS_DIVE_Y_MIN + (s16) (random() % (BOSS_DIVE_Y_MAX - BOSS_DIVE_Y_MIN + 1));
+                    bossAtTop = FALSE;
+                    verticalMove = TRUE;
+                }
+                else
+                {
+                    targetY = BOSS_ANCHOR_Y;
+                    verticalMove = FALSE;
+                }
+            }
+            else
+            {
+                targetY = BOSS_ANCHOR_Y;
+                bossAtTop = TRUE;
+                verticalMove = TRUE;
+            }
+            beginMove(bossAnchorX[anchorIndex], targetY, verticalMove);
         }
     }
 
@@ -585,7 +840,7 @@ void boss_update(void)
     SPR_setPosition(bodyBL, x, y + BOSS_QUAD_H);
     SPR_setPosition(bodyBR, x + BOSS_QUAD_W, y + BOSS_QUAD_H);
 
-    for (u16 i = 0; i < 2; i++)
+    for (u16 i = 0; i < def->weakSpotCount; i++)
     {
         BossWeakSpot *ws = &weakSpots[i];
         if (ws->hitFlashTimer > 0)
@@ -597,6 +852,6 @@ void boss_update(void)
             if (ws->hitFlashTimer == 0 && !ws->destroyed)
                 SPR_setVRAMTileIndex(ws->sprite, weakSpotNormalTile);
         }
-        SPR_setPosition(ws->sprite, x + weakSpotOffsetX[i], y + weakSpotOffsetY[i]);
+        SPR_setPosition(ws->sprite, x + def->weakSpotOffsetX[i], y + def->weakSpotOffsetY[i]);
     }
 }

@@ -164,7 +164,7 @@ static void resolvePlayerBulletsVsBoss(void)
 
         AABB bbox = bullet_getBounds(b);
 
-        for (u16 wi = 0; wi < 2; wi++)
+        for (u16 wi = 0; wi < boss_weakSpotCount(); wi++)
         {
             if (aabb_overlaps(bbox, boss_weakSpotBounds(wi)))
             {
