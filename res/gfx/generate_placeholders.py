@@ -27,6 +27,14 @@ import subprocess
 
 from PIL import Image, ImageDraw, ImageFont
 
+# Index 0 is only transparent for SPRITE resources -- the VDP has no
+# transparency concept for background planes, so every TILESET here
+# (terrain/starfield/hud_fill/hud_separator/banner_font) actually renders
+# whatever RGB is stored at index 0 wherever a tile leaves it blank (empty
+# terrain, starfield gaps, the font's cell background, etc). A previous
+# high-visibility magenta here (meant only to make sprite transparency
+# obvious when previewing the PNGs) was therefore showing up as a real
+# bright-pink background in-game. Must stay black.
 TRANSPARENT = (0, 0, 0)
 BLACK = (1, 1, 1)  # not literal (0,0,0)/TRANSPARENT -- see the note in banner_font()
 WHITE = (255, 255, 255)
@@ -64,6 +72,13 @@ def new_indexed(size, palette_rgb):
     # pad palette to 256 entries as PIL requires
     flat.extend([0, 0, 0] * (256 - len(palette_rgb)))
     img.putpalette(flat)
+    # Marks index 0 as genuinely transparent in the saved PNG's tRNS chunk
+    # (honored automatically by Image.save()) -- SGDK/rescomp already treats
+    # index 0 as transparent by convention regardless of this, but without
+    # it the PNG's stored RGB (see TRANSPARENT's high-visibility color,
+    # chosen for previewing) would show as a solid fill in normal image
+    # viewers instead of looking transparent there too.
+    img.info["transparency"] = 0
     return img
 
 
