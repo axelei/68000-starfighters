@@ -147,8 +147,13 @@ static void resolvePlayerBulletsVsHomingBullets(void)
     }
 }
 
-// Player bullets vs each of the boss's weak spots (the only damageable part
-// of a boss -- see boss.h's design comment).
+// Player bullets vs the boss's weak spots -- the only damageable part (see
+// boss.h's design comment). A bullet that misses them passes straight
+// through the body untouched: the pods are embedded within the body's own
+// bounding box (see boss.c's weakSpotOffsetY, well inside its 64px height),
+// so a solid absorbing body hitbox was intercepting bullets approaching
+// from below well before they ever reached an embedded pod -- effectively
+// blocking almost every shot at them.
 static void resolvePlayerBulletsVsBoss(void)
 {
     for (u16 bi = 0; bi < MAX_PLAYER_BULLETS; bi++)

@@ -103,6 +103,14 @@ typedef struct
 static u16 bodyTLTile, bodyBLTile; // frame 0/1 of the single spr_boss_body sheet
 static u16 weakSpotNormalTile, weakSpotFlashTile, weakSpotDestroyedTile;
 
+// Pause after the killing blow before the encounter actually ends (see
+// triggerDeath()) -- lets the death scream/explosions play out and gives
+// the player a breather instead of formation.c cutting straight to the
+// next wave the instant the last weak spot dies.
+#define BOSS_DEATH_DELAY_FRAMES (90) // 1.5s at 60fps
+static bool dying;
+static u16 deathDelayTimer;
+
 static bool bossActive;
 static fix16 bossX, bossY; // anchor: body's top-left corner
 static fix16 bossVX, bossVY;
@@ -204,6 +212,7 @@ void boss_begin(void)
 
     lifeTimer = BOSS_TIME_LIMIT_FRAMES;
     exitingAfterMove = FALSE;
+    dying = FALSE;
     anchorIndex = 0;
     currentAttack = BOSS_ATTACK_SPREAD;
     homingFireTimer = HOMING_FIRE_INTERVAL;
@@ -250,7 +259,10 @@ void boss_begin(void)
         s16 wy = startY + weakSpotOffsetY[i];
         u16 attr = TILE_ATTR_FULL(PAL_BOSS, FALSE, FALSE, FALSE, weakSpotNormalTile);
         if (weakSpots[i].sprite == NULL)
-            weakSpots[i].sprite = SPR_addSpriteEx(&spr_boss_weakspot, wx, wy, attr, 0);
+            // SPR_FLAG_INSERT_HEAD -- weak spots must draw in front of the
+            // body (they're created after it, and sprites later in the
+            // list render underneath earlier ones), not get hidden behind it.
+            weakSpots[i].sprite = SPR_addSpriteEx(&spr_boss_weakspot, wx, wy, attr, SPR_FLAG_INSERT_HEAD);
         else
         {
             SPR_setVRAMTileIndex(weakSpots[i].sprite, weakSpotNormalTile);
@@ -326,21 +338,29 @@ AABB boss_weakSpotBounds(u16 index)
     return box;
 }
 
+// Staggered across most of BOSS_DEATH_DELAY_FRAMES (the 1.5s breath before
+// the fight actually ends -- see boss_update()'s dying state) rather than
+// over in a fraction of a second, so the death reads as a bigger, more
+// drawn-out demise than a regular enemy's single/BIG's 5-burst explosion.
+#define DEATH_EXPLOSION_COUNT    10
+#define DEATH_EXPLOSION_STAGGER  8 // frames between each explosion starting
+
 static void triggerDeath(void)
 {
     sfx_play_bossDeathScream();
 
     s16 x = F16_toInt(bossX);
     s16 y = F16_toInt(bossY);
-    for (u16 i = 0; i < 4; i++)
+    for (u16 i = 0; i < DEATH_EXPLOSION_COUNT; i++)
     {
         s16 cx = x + (s16) (random() % BOSS_BODY_W);
         s16 cy = y + (s16) (random() % BOSS_BODY_H);
-        explosion_spawnAtDelayed(cx, cy, i * 6);
+        explosion_spawnAtDelayed(cx, cy, i * DEATH_EXPLOSION_STAGGER);
     }
 
     score_addBossKill();
-    endFight();
+    dying = TRUE;
+    deathDelayTimer = BOSS_DEATH_DELAY_FRAMES;
 }
 
 void boss_hitWeakSpot(u16 index, s16 damage)
@@ -472,6 +492,21 @@ void boss_update(void)
 {
     if (!bossActive)
         return;
+
+    if (dying)
+    {
+        // Frozen in place (both weak spots already show their destroyed
+        // husk) while the death scream/staggered explosions play out --
+        // see triggerDeath(). boss_isActive() stays TRUE for this whole
+        // delay, so formation.c doesn't cut to the next wave early.
+        if (deathDelayTimer > 0)
+        {
+            deathDelayTimer--;
+            return;
+        }
+        endFight();
+        return;
+    }
 
     if (!exitingAfterMove)
     {
