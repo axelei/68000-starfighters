@@ -30,7 +30,7 @@
 // accurately-aimed fire per pod -- comfortably inside the hidden 5-minute
 // limit even with dodging cutting into actual hit uptime.
 #define WEAKSPOT_HP 150
-#define WEAKSPOT_HIT_FLASH_FRAMES 6
+#define WEAKSPOT_HIT_FLASH_FRAMES 6 // short per-hit flash -- deliberately unscaled, see enemy.c's HIT_FLASH_FRAMES
 static const s16 weakSpotOffsetX[2] = {-8, BOSS_BODY_W - WEAKSPOT_W + 8};
 static const s16 weakSpotOffsetY[2] = {(BOSS_BODY_H - WEAKSPOT_H) / 2, (BOSS_BODY_H - WEAKSPOT_H) / 2};
 
@@ -45,15 +45,20 @@ static const s16 bossAnchorX[BOSS_ANCHOR_COUNT] = {
     PLAY_AREA_X_MAX - BOSS_BODY_W - 8,
 };
 
+// PAL values throughout this file are NTSC * 50/60 (frame counts) or
+// NTSC * 1.2 (speeds) -- see game.h's REGION_PICK -- so real-world
+// pacing/speed stays the same regardless of the console's actual refresh
+// rate. BOSS_MOVE_SPEED_PX is the one exception that needs no pair: 2*1.2
+// rounds back down to 2, so there's nothing to switch between.
 #define BOSS_MOVE_SPEED_PX      2   // fixed speed -- duration derives from distance (see beginMove())
-#define BOSS_MOVE_MIN_FRAMES    20
-#define BOSS_ATTACK_PHASE_FRAMES 240 // ~4s per attack pattern before repositioning
+#define BOSS_MOVE_MIN_FRAMES    REGION_PICK(20, 17)
+#define BOSS_ATTACK_PHASE_FRAMES REGION_PICK(240, 200) // ~4s per attack pattern before repositioning
 
 // Hidden 5-minute limit -- if the fight isn't resolved by then, the boss
 // dives off screen and disappears without awarding score (see
 // enemies_forceDiveAllOut()'s no-reward wave timeout for the analogous
 // regular-wave case).
-#define BOSS_TIME_LIMIT_FRAMES (300 * 60)
+#define BOSS_TIME_LIMIT_FRAMES REGION_PICK(300 * 60, 300 * 50)
 
 typedef enum
 {
@@ -64,20 +69,20 @@ typedef enum
 #define BOSS_ATTACK_KIND_COUNT 3
 
 #define SPREAD_BULLET_COUNT   5
-#define SPREAD_FIRE_INTERVAL  60
-#define SPREAD_SPEED          FIX16(1.6)
+#define SPREAD_FIRE_INTERVAL  REGION_PICK(60, 50)
+#define SPREAD_SPEED          REGION_PICK(FIX16(1.6), FIX16(1.92))
 
 #define BURST_SHOT_COUNT      4
-#define BURST_SHOT_INTERVAL   8
-#define BURST_COOLDOWN        90
-#define BURST_SPEED           FIX16(1.8)
+#define BURST_SHOT_INTERVAL   REGION_PICK(8, 7)
+#define BURST_COOLDOWN        REGION_PICK(90, 75)
+#define BURST_SPEED           REGION_PICK(FIX16(1.8), FIX16(2.16))
 
-#define RADIAL_FIRE_INTERVAL  100 // bossRadialVx/Vy (boss_patterns_generated.h) are already scaled to speed
+#define RADIAL_FIRE_INTERVAL  REGION_PICK(100, 83) // bossRadialVxNtsc/Pal (boss_patterns_generated.h) are already scaled to speed
 
-#define HOMING_FIRE_INTERVAL  240 // one homing bullet roughly every 4s, regardless of attack pattern
-#define HOMING_INITIAL_SPEED  FIX16(1.3) // must match bullet.c's HOMING_SPEED
+#define HOMING_FIRE_INTERVAL  REGION_PICK(240, 200) // one homing bullet roughly every 4s, regardless of attack pattern
+#define HOMING_INITIAL_SPEED  REGION_PICK(FIX16(1.3), FIX16(1.56)) // must match bullet.c's HOMING_SPEED
 #define HOMING_MAX_ALIVE      3   // never more than this many at once (see bullet_countActiveHoming())
-#define HOMING_RETRY_FRAMES   30  // how soon to check again if the cap was hit
+#define HOMING_RETRY_FRAMES   REGION_PICK(30, 25)  // how soon to check again if the cap was hit
 
 typedef enum
 {
@@ -109,7 +114,7 @@ static u16 weakSpotNormalTile, weakSpotFlashTile, weakSpotDestroyedTile;
 // triggerDeath()) -- lets the death scream/explosions play out and gives
 // the player a breather instead of formation.c cutting straight to the
 // next wave the instant the last weak spot dies.
-#define BOSS_DEATH_DELAY_FRAMES (90) // 1.5s at 60fps
+#define BOSS_DEATH_DELAY_FRAMES REGION_PICK(90, 75) // 1.5s
 static bool dying;
 static u16 deathDelayTimer;
 
@@ -470,8 +475,16 @@ static void updateAttack(fix16 originX, fix16 originY)
                 radialFireTimer--;
             else
             {
+                // Picks the NTSC/PAL-scaled direction table matching the
+                // console's actual region (see game.h's REGION_PICK) --
+                // both arrays share the same element count/type, just
+                // scaled to a different speed, so a single pointer works
+                // for either (unlike the interwave paths' differently
+                // *sized* NTSC/PAL arrays -- see enemy.c's waverPathAt()).
+                const fix16 *vxTable = IS_PAL_SYSTEM ? bossRadialVxPal : bossRadialVxNtsc;
+                const fix16 *vyTable = IS_PAL_SYSTEM ? bossRadialVyPal : bossRadialVyNtsc;
                 for (u16 i = 0; i < BOSS_RADIAL_DIRECTION_COUNT; i++)
-                    bullet_spawn_enemy(originX, originY, bossRadialVx[i], bossRadialVy[i]);
+                    bullet_spawn_enemy(originX, originY, vxTable[i], vyTable[i]);
                 radialFireTimer = RADIAL_FIRE_INTERVAL;
             }
             break;

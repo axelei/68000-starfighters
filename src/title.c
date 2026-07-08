@@ -10,7 +10,7 @@
 #define PRESS_START_Y 20
 
 // 60 frames (1s) out + 60 frames (1s) in = 2s total, as requested.
-#define FADE_FRAMES 60
+#define FADE_FRAMES REGION_PICK(60, 50) // ~1s -- see game.h's REGION_PICK
 
 // Fixed, dedicated tile range for the logo -- well clear of terrain.c's
 // TERRAIN_BASE_TILE.."+32" range. Loaded explicitly (rather than via

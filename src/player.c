@@ -24,19 +24,24 @@ PlayerState player;
 #define ANIM_LEAN_LEFT  1
 #define ANIM_LEAN_RIGHT 2
 
-#define BASE_SPEED       FIX16(1.5)
+// PAL values throughout this block are NTSC * 1.2 (speeds) or NTSC * 50/60
+// (frame counts) -- see game.h's REGION_PICK -- so real-world speed/timing
+// stays the same regardless of the console's actual refresh rate.
+#define BASE_SPEED       REGION_PICK(FIX16(1.5), FIX16(1.8))
 // 1.5 * 1.6 precomputed at compile time -- avoids an F16_mul() call every
 // single frame the speed powerup is active (mul/div are costly on the 68000).
-#define BOOSTED_SPEED    FIX16(2.4)
-#define FIRE_COOLDOWN     8
-#define BULLET_SPEED     FIX16(4.0)
-#define SPREAD_ANGLE_VX  FIX16(1.0)
-#define POWERUP_DURATION (60 * 10) // 10 seconds at 60fps
+#define BOOSTED_SPEED    REGION_PICK(FIX16(2.4), FIX16(2.88))
+#define FIRE_COOLDOWN    REGION_PICK(8, 7)
+#define BULLET_SPEED     REGION_PICK(FIX16(4.0), FIX16(4.8))
+#define SPREAD_ANGLE_VX  REGION_PICK(FIX16(1.0), FIX16(1.2))
+#define POWERUP_DURATION REGION_PICK(60 * 10, 50 * 10) // 10 seconds
 
 #define STARTING_LIVES     4
-#define DEATH_PAUSE_FRAMES 60  // 1s at 60fps before the next ship appears
-#define INVULN_DURATION    180 // 3s of post-respawn invulnerability
-#define BLINK_INTERVAL     4   // frames per visibility toggle while invulnerable
+#define DEATH_PAUSE_FRAMES REGION_PICK(60, 50)  // 1s before the next ship appears
+#define INVULN_DURATION    REGION_PICK(180, 150) // 3s of post-respawn invulnerability
+#define BLINK_INTERVAL     4   // frames per visibility toggle while invulnerable -- a
+                                // fixed visual flicker rate, not tied to real-world
+                                // duration, so this one deliberately stays unscaled
 
 static void respawn(void)
 {

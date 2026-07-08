@@ -20,21 +20,24 @@
 #define GRID_START_Y   56
 #define GRID_SPACING_Y 18
 
-#define SPAWN_STAGGER_FRAMES 5
+// PAL values throughout this block are NTSC * 50/60 -- see game.h's
+// REGION_PICK -- so real-world pacing stays the same regardless of the
+// console's actual refresh rate.
+#define SPAWN_STAGGER_FRAMES REGION_PICK(5, 4)
 #define ENTRANCE_SIDE_OFFSET 30 // how far off its slot an entrance starts, for a slight swoop
 
 // Pause between a wave being fully cleared and the next one swooping in.
-#define WAVE_CLEAR_DELAY 90 // 1.5s at 60fps
+#define WAVE_CLEAR_DELAY REGION_PICK(90, 75) // 1.5s
 
 // How long the "WAVE N" banner stays up once a wave starts.
-#define WAVE_ANNOUNCE_FRAMES 120 // 2s at 60fps
+#define WAVE_ANNOUNCE_FRAMES REGION_PICK(120, 100) // 2s
 
 // If a wave's enemies are still around after this long, they all dive off
 // at once (see enemies_forceDiveAllOut()) and the next wave starts without
 // waiting for the player to clear the rest -- keeps a wave from stalling
 // forever if the player just avoids the remaining enemies. Length itself
 // (WAVE_TIME_LIMIT_SECONDS) lives in settings.h.
-#define WAVE_TIME_LIMIT_FRAMES (WAVE_TIME_LIMIT_SECONDS * 60)
+#define WAVE_TIME_LIMIT_FRAMES REGION_PICK(WAVE_TIME_LIMIT_SECONDS * 60, WAVE_TIME_LIMIT_SECONDS * 50)
 
 static u16 waveIndex;       // which WaveDef (mod WAVE_COUNT) is currently in play
 static u16 wavesCleared;

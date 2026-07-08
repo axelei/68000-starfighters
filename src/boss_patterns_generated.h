@@ -7,17 +7,29 @@
 
 #define BOSS_RADIAL_DIRECTION_COUNT 10
 
-// bossRadialVx/Vy[i] -- one bullet's velocity for the boss's "radial" attack
-// (see boss.c), already scaled to speed -- no runtime trig/div/mul needed,
-// just spawn a bullet with this exact (vx,vy) for each i.
-static const fix16 bossRadialVx[BOSS_RADIAL_DIRECTION_COUNT] =
+// bossRadialVx/VyNtsc/Pal[i] -- one bullet's velocity for the boss's
+// "radial" attack (see boss.c), already scaled to speed -- no runtime
+// trig/div/mul needed, just spawn a bullet with this exact (vx,vy) for
+// each i. boss.c picks the pair matching the console's own region via
+// REGION_PICK (see game.h), same as every other dual NTSC/PAL constant.
+static const fix16 bossRadialVxNtsc[BOSS_RADIAL_DIRECTION_COUNT] =
 {
     FIX16(1.400000), FIX16(1.132624), FIX16(0.432624), FIX16(-0.432624), FIX16(-1.132624), FIX16(-1.400000), FIX16(-1.132624), FIX16(-0.432624), FIX16(0.432624), FIX16(1.132624)
 };
 
-static const fix16 bossRadialVy[BOSS_RADIAL_DIRECTION_COUNT] =
+static const fix16 bossRadialVyNtsc[BOSS_RADIAL_DIRECTION_COUNT] =
 {
     FIX16(0.000000), FIX16(0.822899), FIX16(1.331479), FIX16(1.331479), FIX16(0.822899), FIX16(0.000000), FIX16(-0.822899), FIX16(-1.331479), FIX16(-1.331479), FIX16(-0.822899)
+};
+
+static const fix16 bossRadialVxPal[BOSS_RADIAL_DIRECTION_COUNT] =
+{
+    FIX16(1.680000), FIX16(1.359149), FIX16(0.519149), FIX16(-0.519149), FIX16(-1.359149), FIX16(-1.680000), FIX16(-1.359149), FIX16(-0.519149), FIX16(0.519149), FIX16(1.359149)
+};
+
+static const fix16 bossRadialVyPal[BOSS_RADIAL_DIRECTION_COUNT] =
+{
+    FIX16(0.000000), FIX16(0.987479), FIX16(1.597775), FIX16(1.597775), FIX16(0.987479), FIX16(0.000000), FIX16(-0.987479), FIX16(-1.597775), FIX16(-1.597775), FIX16(-0.987479)
 };
 
 #endif // BOSS_PATTERNS_GENERATED_H

@@ -11,11 +11,20 @@ Bullet enemyBullets[MAX_ENEMY_BULLETS];
 #define HOMING_SPR_W 16
 #define HOMING_SPR_H 16
 
-// Boss's homing bullet only (see bullet_spawn_enemy_homing()).
+// Boss's homing bullet only (see bullet_spawn_enemy_homing()). PAL's
+// HOMING_RETARGET_FRAMES/HOMING_SPEED are NTSC * 50/60 / * 1.2 -- see
+// game.h's REGION_PICK -- so real-world turn cadence and speed stay the
+// same. HOMING_TURN_STEP deliberately does NOT scale: it's a max delta
+// applied once per retarget (not per-tick), so the real-world turn rate
+// already comes out consistent from the retarget interval alone (20
+// frames @ 60fps and 17 frames @ 50fps are both ~0.33s). Very short
+// (<=4 frame) flash/blink timers (HOMING_HIT_FLASH_FRAMES,
+// HOMING_BLINK_OFF_FRAMES) also stay unscaled, same exception as
+// enemy.c's HIT_FLASH_FRAMES.
 #define HOMING_BULLET_HP           5
-#define HOMING_RETARGET_FRAMES     20  // one-shot re-aim interval -- not every tick, see the update below
+#define HOMING_RETARGET_FRAMES     REGION_PICK(20, 17) // one-shot re-aim interval -- not every tick, see the update below
 #define HOMING_TURN_STEP           FIX16(0.15) // max vx/vy nudge per retarget, towards the aimed direction
-#define HOMING_SPEED               FIX16(1.3)
+#define HOMING_SPEED               REGION_PICK(FIX16(1.3), FIX16(1.56))
 #define HOMING_HIT_FLASH_FRAMES    4
 #define HOMING_BLINK_OFF_FRAMES    3  // brief hidden pulse once per retarget cycle -- see the update below
 

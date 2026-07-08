@@ -5,6 +5,19 @@
 
 #include "settings.h"
 
+// Picks between two precalculated values based on the console's actual
+// region (IS_PAL_SYSTEM is a cheap VDP status-register read -- see
+// C:/sgdk/inc/vdp.h -- safe to call anywhere/anytime, no boot-order
+// dependency). When both arguments are themselves compile-time-constant
+// expressions (e.g. `SECONDS * 60` / `SECONDS * 50`), the compiler folds
+// each branch to a single immediate value ahead of time, so this never
+// costs a runtime multiply -- only a register-read + select between two
+// already-precalculated numbers. Used throughout this codebase's
+// frame-count/velocity #defines so PAL (50fps) and NTSC (60fps) consoles
+// see the same real-world pacing/speed instead of PAL running everything
+// ~17% slower (see the PAL/NTSC parity plan).
+#define REGION_PICK(ntscVal, palVal) (IS_PAL_SYSTEM ? (palVal) : (ntscVal))
+
 // Hardware palette assignments, consolidated to 4 groups that each use all
 // 16 slots (transparent/black/white/gray + shades of that group's colors --
 // see generate_placeholders.py's module docstring). Title's own palette
@@ -42,8 +55,9 @@
 
 // Terrain scroll speed, fixed-point pixels/frame (see terrain.c). Shared
 // with turret.c so ground turrets travel down the screen in lockstep with
-// the terrain clumps they're attached to.
-#define TERRAIN_SPEED FIX16(0.55)
+// the terrain clumps they're attached to. PAL value is NTSC * 1.2 (60/50)
+// so real-world pixels/sec stays the same despite PAL's slower tick rate.
+#define TERRAIN_SPEED REGION_PICK(FIX16(0.55), FIX16(0.66))
 
 typedef struct
 {

@@ -10,7 +10,13 @@
 
 Enemy enemies[MAX_ENEMIES];
 
-#define ENTER_DURATION 90 // frames (~1.5s at 60fps)
+// PAL values throughout this file are NTSC * 50/60 (frame counts) or
+// NTSC * 1.2 (speeds/jitter) -- see game.h's REGION_PICK -- so real-world
+// pacing/speed matches regardless of the console's actual refresh rate.
+// Exception: very short (<=6 frame) per-hit visual flash timers (e.g.
+// HIT_FLASH_FRAMES) deliberately stay unscaled, same as player.c's
+// BLINK_INTERVAL -- they're a flicker feel, not real-world-duration pacing.
+#define ENTER_DURATION REGION_PICK(90, 75) // frames (~1.5s)
 #define HIT_FLASH_FRAMES 3
 
 #define HP_BEE     10
@@ -21,11 +27,11 @@ Enemy enemies[MAX_ENEMIES];
 // BEE/SPECIAL: occasionally peel out of formation, dive down and off the
 // bottom of the screen, then re-enter from the top back into its slot --
 // same path shape as the initial formation entrance.
-#define DIVE_SPEED_Y          FIX16(1.2)
-#define DIVE_SPEED_X_MAX      FIX16(0.6) // max horizontal drift while diving
+#define DIVE_SPEED_Y          REGION_PICK(FIX16(1.2), FIX16(1.44))
+#define DIVE_SPEED_X_MAX      REGION_PICK(FIX16(0.6), FIX16(0.72)) // max horizontal drift while diving
 #define DIVE_REENTRY_OFFSET   30         // +/- offset from slot X to re-enter from
-#define DIVE_COOLDOWN_MIN     180 // 3s at 60fps
-#define DIVE_COOLDOWN_RANGE   240 // up to +4s more
+#define DIVE_COOLDOWN_MIN     REGION_PICK(180, 150) // 3s
+#define DIVE_COOLDOWN_RANGE   REGION_PICK(240, 200) // up to +4s more
 
 // BEE/SPECIAL: small constant wander around their formation slot while
 // IN_FORMATION, so the grid doesn't look frozen between dives. Radii are
@@ -37,9 +43,14 @@ Enemy enemies[MAX_ENEMIES];
 // entry and reflecting off the radius bounds is just comparisons/adds.
 #define SMALL_DRIFT_RADIUS_X        10
 #define SMALL_DRIFT_RADIUS_Y        1
-#define SMALL_DRIFT_INTERVAL_MIN    40
-#define SMALL_DRIFT_INTERVAL_RANGE  40
+#define SMALL_DRIFT_INTERVAL_MIN    REGION_PICK(40, 33)
+#define SMALL_DRIFT_INTERVAL_RANGE  REGION_PICK(40, 33)
 #define SMALL_DRIFT_SPEED_COUNT     4
+// Left unscaled for PAL: REGION_PICK's IS_PAL_SYSTEM is a runtime register
+// read, which C doesn't allow inside a `static const` array initializer
+// (must be a true compile-time constant expression) -- same exception as
+// sfx.c's SfxStep tables. This is a barely-perceptible idle wander effect,
+// not worth restructuring into parallel NTSC/PAL arrays for.
 static const fix16 smallDriftSpeedsX[SMALL_DRIFT_SPEED_COUNT] =
     { FIX16(-0.25), FIX16(-0.1), FIX16(0.1), FIX16(0.25) };
 static const fix16 smallDriftSpeedsY[SMALL_DRIFT_SPEED_COUNT] =
@@ -47,10 +58,10 @@ static const fix16 smallDriftSpeedsY[SMALL_DRIFT_SPEED_COUNT] =
 
 // BIG: fires at the player (with some aim error) at random intervals while
 // in formation.
-#define BIG_FIRE_COOLDOWN_MIN   90  // 1.5s
-#define BIG_FIRE_COOLDOWN_RANGE 150 // up to +2.5s more
-#define ENEMY_BULLET_SPEED FIX16(2.0)
-#define ENEMY_AIM_JITTER    FIX16(0.6) // max +/- horizontal aim error
+#define BIG_FIRE_COOLDOWN_MIN   REGION_PICK(90, 75)  // 1.5s
+#define BIG_FIRE_COOLDOWN_RANGE REGION_PICK(150, 125) // up to +2.5s more
+#define ENEMY_BULLET_SPEED REGION_PICK(FIX16(2.0), FIX16(2.4))
+#define ENEMY_AIM_JITTER    REGION_PICK(FIX16(0.6), FIX16(0.72)) // max +/- horizontal aim error
 
 // BIG deaths trigger several staggered explosions across its body instead
 // of just one, since it's much larger than a bee/special.
@@ -68,24 +79,30 @@ static const fix16 smallDriftSpeedsY[SMALL_DRIFT_SPEED_COUNT] =
 // batch doesn't pop in as one block. INTERWAVE_ENTRY_STAGGER_SECONDS
 // (settings.h) is the pause between one batch fully clearing and the next
 // appearing.
-#define WAVER_BATCH_GAP_FRAMES (INTERWAVE_ENTRY_STAGGER_SECONDS * 60)
+#define WAVER_BATCH_GAP_FRAMES REGION_PICK(INTERWAVE_ENTRY_STAGGER_SECONDS * 60, INTERWAVE_ENTRY_STAGGER_SECONDS * 50)
 #define WAVER_COL_SPACING 18 // px between column centers -- edges just touch (16px sprite), no overlap
 #define WAVER_ROW_SPACING 30
-#define WAVER_ROW_STAGGER_FRAMES 90 // 1.5s between each row starting to scroll in
+#define WAVER_ROW_STAGGER_FRAMES REGION_PICK(90, 75) // 1.5s between each row starting to scroll in
 
 // Per-row offset into the shared path clock (see waverRowPhase in enemy.h)
 // -- each row samples waverPaths this many frames "ahead" of the row above
 // it, so the batch ripples through the same path shape row by row instead
-// of every row weaving in lockstep.
-#define WAVER_ROW_PHASE_FRAMES 16
-#define WAVER_DESCEND_SPEED FIX16(1.5) // must match DESCEND_SPEED_PX in generate_interwave.py
+// of every row weaving in lockstep. Scaled the same *50/60 way as every
+// other frame count here so PAL's row ripple reads at the same real-world
+// pace, not stretched by the shared clock ticking 50/sec instead of 60/sec.
+#define WAVER_ROW_PHASE_FRAMES REGION_PICK(16, 13)
+// Must match generate_interwave.py's DESCEND_SPEED_PX (see its NTSC/PAL
+// pair) -- see spawnNextWaverSubgroup(), which also picks the matching
+// waverPathsNtsc/Pal table and WAVER_PATH_LENGTH_NTSC/PAL by the same
+// region check.
+#define WAVER_DESCEND_SPEED REGION_PICK(FIX16(1.5), FIX16(1.8))
 
 // Wavers only rarely fire back -- a long cooldown means any single one
 // fires at most once or twice during its whole flight.
-#define WAVER_FIRE_COOLDOWN_MIN   240 // 4s
-#define WAVER_FIRE_COOLDOWN_RANGE 180 // up to +3s more
-#define WAVER_BULLET_SPEED FIX16(1.6)
-#define WAVER_AIM_JITTER    FIX16(0.6)
+#define WAVER_FIRE_COOLDOWN_MIN   REGION_PICK(240, 200) // 4s
+#define WAVER_FIRE_COOLDOWN_RANGE REGION_PICK(180, 150) // up to +3s more
+#define WAVER_BULLET_SPEED REGION_PICK(FIX16(1.6), FIX16(1.92))
+#define WAVER_AIM_JITTER    REGION_PICK(FIX16(0.6), FIX16(0.72))
 
 // SIDE_DIVE inter-wave shape (see WaverShape in enemy.h): rows of 2 enemies
 // (offset by SIDE_DIVE_COL_GAP) enter from genuinely off-screen (past
@@ -103,9 +120,9 @@ static const fix16 smallDriftSpeedsY[SMALL_DRIFT_SPEED_COUNT] =
 #define SIDE_DIVE_ROW_COUNT          8
 #define SIDE_DIVE_SUBGROUP_SIZE      (SIDE_DIVE_ROW_COUNT * 2) // 16
 #define SIDE_DIVE_COL_GAP            18 // px between the two members of a row
-#define SIDE_DIVE_ROW_STAGGER_FRAMES 20 // ~1/3s between each row starting
+#define SIDE_DIVE_ROW_STAGGER_FRAMES REGION_PICK(20, 17) // ~1/3s between each row starting
 #define SIDE_DIVE_START_Y            24 // near the top, not mid-screen -- leaves most of the screen for the dive
-#define SIDE_DIVE_DIVE_VY       FIX16(1.8) // steep constant descent once the sweep finishes
+#define SIDE_DIVE_DIVE_VY       REGION_PICK(FIX16(1.8), FIX16(2.16)) // steep constant descent once the sweep finishes
 
 // BEE/SPECIAL only: caps how many can be away from their formation slot
 // (diving out and/or swooping back in) at the same time.
@@ -466,6 +483,26 @@ static void updateWaverGroup(void)
     currentWaverClock++;
 }
 
+// Looks up the current path's x-offset at `clock`, clamped to whichever
+// region's table is active (see game.h's REGION_PICK) -- waverPathsNtsc/Pal
+// are different fixed-size arrays (PAL's is shorter, since its faster
+// WAVER_DESCEND_SPEED crosses the screen in fewer frames), so this branches
+// on IS_PAL_SYSTEM to index the right one rather than trying to share a
+// single pointer type across two differently-sized array types.
+static s16 waverPathAt(u8 pathId, s16 clock)
+{
+    if (IS_PAL_SYSTEM)
+    {
+        if (clock < 0) clock = 0;
+        else if (clock >= WAVER_PATH_LENGTH_PAL) clock = WAVER_PATH_LENGTH_PAL - 1;
+        return waverPathsPal[pathId][clock];
+    }
+
+    if (clock < 0) clock = 0;
+    else if (clock >= WAVER_PATH_LENGTH_NTSC) clock = WAVER_PATH_LENGTH_NTSC - 1;
+    return waverPathsNtsc[pathId][clock];
+}
+
 static void updateWaverFormationSequencing(void); // defined below, used here
 
 void enemies_update(void)
@@ -637,16 +674,12 @@ void enemies_update(void)
                 // spawnNextGridWeaveSubgroup()), and right at reveal time
                 // currentWaverClock may be a frame or two short of/past
                 // exactly cancelling it out, so this must be able to dip
-                // below 0 (clamped) as well as exceed WAVER_PATH_LENGTH.
+                // below 0 as well as exceed the table length -- both
+                // clamped inside waverPathAt().
                 s16 clock = (s16) currentWaverClock + e->waverRowPhase;
-                if (clock < 0)
-                    clock = 0;
-                else if (clock >= WAVER_PATH_LENGTH)
-                    clock = WAVER_PATH_LENGTH - 1;
-
                 s16 anchorX = (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2;
 
-                e->x = FIX16(anchorX + waverPaths[currentWaverPathId][clock] + e->groupOffsetX);
+                e->x = FIX16(anchorX + waverPathAt(currentWaverPathId, clock) + e->groupOffsetX);
                 e->y += WAVER_DESCEND_SPEED;
             }
 
@@ -746,9 +779,10 @@ static void spawnNextGridWeaveSubgroup(void)
         // read ~delay. Baking in -delay here (plus a small per-row ripple
         // step) keeps the clock this row actually sees starting near 0 at
         // reveal time, regardless of how long WAVER_ROW_STAGGER_FRAMES is --
-        // without it, a long enough stagger runs the clock past
-        // WAVER_PATH_LENGTH before a later row is even revealed, freezing
-        // its weave at the path's last entry from the moment it appears.
+        // without it, a long enough stagger runs the clock past the
+        // active region's table length (see waverPathAt()) before a later
+        // row is even revealed, freezing its weave at the path's last
+        // entry from the moment it appears.
         s16 rowPhase = (s16) ((s16) row * WAVER_ROW_PHASE_FRAMES) - delay;
 
         for (u16 col = 0; col < WAVER_GRID_COLS; col++)
@@ -778,8 +812,8 @@ static void spawnNextGridWeaveSubgroup(void)
 // from the actual distance keeps it consistent. Never below
 // SIDE_DIVE_MIN_SWEEP_FRAMES so a very short hop still reads as a deliberate
 // swoop rather than a snap.
-#define SIDE_DIVE_SWEEP_SPEED_PX     3
-#define SIDE_DIVE_MIN_SWEEP_FRAMES   10
+#define SIDE_DIVE_SWEEP_SPEED_PX     REGION_PICK(3, 4) // 3*1.2=3.6, rounded
+#define SIDE_DIVE_MIN_SWEEP_FRAMES   REGION_PICK(10, 8)
 
 // Spawns exactly one batch of SIDE_DIVE_SUBGROUP_SIZE enemies of
 // waverFormationKind: SIDE_DIVE_ROW_COUNT rows of 2 side by side (offset

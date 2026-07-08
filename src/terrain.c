@@ -13,8 +13,9 @@ TerrainClump terrainClumps[MAX_TERRAIN_CLUMPS];
 // Scroll speed, fixed-point pixels/frame. Terrain scrolls just a bit
 // faster than the starfield, for a subtle parallax effect. (TERRAIN_SPEED
 // itself lives in game.h -- turret.c needs it too, to travel in lockstep
-// with the terrain clumps it's attached to.)
-#define STARFIELD_SPEED FIX16(0.4)
+// with the terrain clumps it's attached to.) PAL value is NTSC * 1.2 --
+// see game.h's REGION_PICK.
+#define STARFIELD_SPEED REGION_PICK(FIX16(0.4), FIX16(0.48))
 
 static fix16 terrainScroll;
 static fix16 starfieldScroll;
@@ -48,7 +49,7 @@ static bool starfieldRegenPending;
 // Also self-requests a regen every AUTO_REGEN_FRAMES, independent of
 // formation.c's wave-change trigger -- a long-running wave (or a player
 // stuck replaying the same one) would otherwise never see any variety.
-#define AUTO_REGEN_FRAMES (40 * 60) // ~40s at 60fps
+#define AUTO_REGEN_FRAMES REGION_PICK(40 * 60, 40 * 50) // ~40s
 static u16 autoRegenTimer;
 
 // Stamps one of the pregenerated terrain variants (terrain_generated.h) onto

@@ -24,18 +24,23 @@ Turret turrets[MAX_TURRETS];
 
 #define HP_TURRET 8
 
-#define FIRE_COOLDOWN_MIN   100 // ~1.7s between bursts
-#define FIRE_COOLDOWN_RANGE 120 // up to +2s more
+// PAL values throughout this block are NTSC * 50/60 (frame counts) or
+// NTSC * 1.2 (speeds/jitter) -- see game.h's REGION_PICK. Very short
+// (<=6 frame) per-hit/per-shot visual flash timers (HIT_FLASH_FRAMES,
+// BURST_SHOT_INTERVAL) deliberately stay unscaled, same exception as
+// enemy.c's HIT_FLASH_FRAMES.
+#define FIRE_COOLDOWN_MIN   REGION_PICK(100, 83) // ~1.7s between bursts
+#define FIRE_COOLDOWN_RANGE REGION_PICK(120, 100) // up to +2s more
 #define BURST_SHOT_COUNT    3   // shots fired per burst
 #define BURST_SHOT_INTERVAL 3   // frames between each shot in a burst
-#define SHOOT_ANIM_FRAMES   12  // frames the muzzle-flash frame is held
+#define SHOOT_ANIM_FRAMES   REGION_PICK(12, 10)  // frames the muzzle-flash frame is held
 #define HIT_FLASH_FRAMES    3   // frames the white hit-flash frame is held
-#define TURRET_BULLET_SPEED FIX16(1.8)
-#define TURRET_AIM_JITTER   FIX16(0.5) // max +/- horizontal aim error
+#define TURRET_BULLET_SPEED REGION_PICK(FIX16(1.8), FIX16(2.16))
+#define TURRET_AIM_JITTER   REGION_PICK(FIX16(0.5), FIX16(0.6)) // max +/- horizontal aim error
 
 // How often a spawn is *attempted* (not guaranteed -- see trySpawn()).
-#define SPAWN_CHECK_COOLDOWN_MIN   50 // ~0.8s
-#define SPAWN_CHECK_COOLDOWN_RANGE 70 // up to +1.2s more
+#define SPAWN_CHECK_COOLDOWN_MIN   REGION_PICK(50, 42) // ~0.8s
+#define SPAWN_CHECK_COOLDOWN_RANGE REGION_PICK(70, 58) // up to +1.2s more
 
 #define POWERUP_DROP_PERCENT 20 // chance a killed turret drops a powerup
 

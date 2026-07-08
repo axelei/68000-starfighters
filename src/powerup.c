@@ -5,7 +5,7 @@ Powerup powerups[MAX_POWERUPS];
 
 #define POWERUP_SPR_W 16
 #define POWERUP_SPR_H 16
-#define DRIFT_SPEED FIX16(0.6)
+#define DRIFT_SPEED REGION_PICK(FIX16(0.6), FIX16(0.72)) // see game.h's REGION_PICK
 
 void powerups_init(void)
 {
