@@ -72,8 +72,14 @@ void explosion_spawnAtDelayed(s16 centerX, s16 centerY, u16 delay)
         s16 py = centerY - EXPLOSION_SPR_H / 2;
 
         if (e->sprite == NULL)
+            // SPR_FLAG_INSERT_HEAD -- explosions should read as on top of
+            // whatever they're covering (an enemy, the boss's body/weak
+            // spots...), not tucked behind it; without this they'd default
+            // to the tail of the sprite list (SPR_MAX_DEPTH), which put
+            // boss death explosions visibly behind the still-on-screen body.
             e->sprite = SPR_addSpriteEx(&spr_explosion, px, py,
-                                         TILE_ATTR_FULL(PAL_ENEMY, FALSE, FALSE, FALSE, frameTile[0]), 0);
+                                         TILE_ATTR_FULL(PAL_ENEMY, FALSE, FALSE, FALSE, frameTile[0]),
+                                         SPR_FLAG_INSERT_HEAD);
         else
         {
             SPR_setPosition(e->sprite, px, py);

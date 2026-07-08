@@ -76,6 +76,8 @@ typedef enum
 
 #define HOMING_FIRE_INTERVAL  240 // one homing bullet roughly every 4s, regardless of attack pattern
 #define HOMING_INITIAL_SPEED  FIX16(1.3) // must match bullet.c's HOMING_SPEED
+#define HOMING_MAX_ALIVE      3   // never more than this many at once (see bullet_countActiveHoming())
+#define HOMING_RETRY_FRAMES   30  // how soon to check again if the cap was hit
 
 typedef enum
 {
@@ -478,6 +480,14 @@ static void updateAttack(fix16 originX, fix16 originY)
     if (homingFireTimer > 0)
     {
         homingFireTimer--;
+    }
+    else if (bullet_countActiveHoming() >= HOMING_MAX_ALIVE)
+    {
+        // Already at the cap (player hasn't shot enough of them down yet)
+        // -- check back again shortly instead of waiting a full
+        // HOMING_FIRE_INTERVAL, so a new one appears promptly once room
+        // frees up.
+        homingFireTimer = HOMING_RETRY_FRAMES;
     }
     else
     {

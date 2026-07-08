@@ -40,6 +40,11 @@ bool bullet_spawn_enemy(fix16 x, fix16 y, fix16 vx, fix16 vy);
 // (isHoming distinguishes it), so it doesn't cost a new sprite-object pool.
 bool bullet_spawn_enemy_homing(fix16 x, fix16 y, fix16 vx, fix16 vy);
 
+// How many homing bullets are currently active -- boss.c caps how many it
+// keeps alive at once (see HOMING_MAX_ALIVE there) rather than letting them
+// pile up if the player doesn't shoot them down quickly.
+u16 bullet_countActiveHoming(void);
+
 // Applies damage to a homing bullet (from a player bullet hit -- see
 // collision.c), flashing it briefly; deactivates it (with an explosion,
 // no score) once hp reaches 0. No-op if the bullet isn't actually homing.

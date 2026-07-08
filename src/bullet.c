@@ -143,6 +143,15 @@ bool bullet_spawn_enemy_homing(fix16 x, fix16 y, fix16 vx, fix16 vy)
     return TRUE;
 }
 
+u16 bullet_countActiveHoming(void)
+{
+    u16 count = 0;
+    for (u16 i = 0; i < MAX_ENEMY_BULLETS; i++)
+        if (enemyBullets[i].active && enemyBullets[i].isHoming)
+            count++;
+    return count;
+}
+
 void bullet_hitHoming(Bullet *b, s16 damage)
 {
     if (!b->isHoming)
