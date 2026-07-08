@@ -36,8 +36,14 @@ static fix16 starfieldScroll;
 // Set by terrain_requestRegen(); consumed by terrain_update() once a half
 // is confirmed fully off-screen (see halfIsOffscreen()) -- regenerating on
 // request immediately, without waiting for that, risked rewriting tiles the
-// player is currently looking at.
-static bool regenPending;
+// player is currently looking at. Split into separate terrain/starfield
+// flags (rather than one shared one) because BG_A and BG_B scroll at
+// different speeds (TERRAIN_SPEED vs STARFIELD_SPEED) -- a half that's
+// off-screen for one plane's current scroll position isn't necessarily
+// off-screen for the other's, so they need independent "is it safe yet"
+// checks rather than being gated on the same scroll position.
+static bool terrainRegenPending;
+static bool starfieldRegenPending;
 
 // Also self-requests a regen every AUTO_REGEN_FRAMES, independent of
 // formation.c's wave-change trigger -- a long-running wave (or a player
@@ -144,7 +150,8 @@ void terrain_init(void)
 
     terrainScroll = 0;
     starfieldScroll = 0;
-    regenPending = FALSE;
+    terrainRegenPending = FALSE;
+    starfieldRegenPending = FALSE;
     autoRegenTimer = AUTO_REGEN_FRAMES;
 }
 
@@ -188,11 +195,12 @@ void terrain_update(void)
     }
     else
     {
-        regenPending = TRUE;
+        terrainRegenPending = TRUE;
+        starfieldRegenPending = TRUE;
         autoRegenTimer = AUTO_REGEN_FRAMES;
     }
 
-    if (regenPending)
+    if (terrainRegenPending)
     {
         s16 topRow = ((s32) F16_toInt(terrainScroll) / 8) % PLANE_H_TILES;
         if (topRow < 0)
@@ -203,8 +211,24 @@ void terrain_update(void)
             if (halfIsOffscreen(half, topRow))
             {
                 applyTerrainMap(half, half * BAND_ROWS);
+                terrainRegenPending = FALSE;
+                break;
+            }
+        }
+    }
+
+    if (starfieldRegenPending)
+    {
+        s16 topRow = ((s32) F16_toInt(starfieldScroll) / 8) % PLANE_H_TILES;
+        if (topRow < 0)
+            topRow += PLANE_H_TILES;
+
+        for (u16 half = 0; half < BANDS_PER_PLANE; half++)
+        {
+            if (halfIsOffscreen(half, topRow))
+            {
                 applyStarfieldMap(half * BAND_ROWS);
-                regenPending = FALSE;
+                starfieldRegenPending = FALSE;
                 break;
             }
         }
@@ -222,7 +246,11 @@ void terrain_requestRegen(void)
     // terrain_update() carries it out on whichever later frame first finds
     // one of the two halves entirely off-screen (see halfIsOffscreen()) --
     // which happens naturally within at most about half a lap of scrolling.
-    regenPending = TRUE;
+    // Terrain and starfield are flagged independently and each waits for its
+    // own plane's half to be off-screen (see terrain_update()), since the
+    // two scroll at different speeds and so go off-screen at different times.
+    terrainRegenPending = TRUE;
+    starfieldRegenPending = TRUE;
 }
 
 s16 terrain_clumpScreenY(const TerrainClump *clump)
