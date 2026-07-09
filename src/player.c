@@ -37,6 +37,7 @@ PlayerState player;
 #define POWERUP_DURATION REGION_PICK(60 * 10, 50 * 10) // 10 seconds
 
 #define STARTING_LIVES     4
+#define MAX_LIVES          9 // see player_addLife() -- keeps the HUD's lives field a single digit
 #define DEATH_PAUSE_FRAMES REGION_PICK(60, 50)  // 1s before the next ship appears
 #define INVULN_DURATION    REGION_PICK(180, 150) // 3s of post-respawn invulnerability
 #define BLINK_INTERVAL     4   // frames per visibility toggle while invulnerable -- a
@@ -218,4 +219,13 @@ void player_kill(void)
 bool player_isGameOver(void)
 {
     return player.state == PLAYER_GAME_OVER;
+}
+
+void player_addLife(void)
+{
+    if (player.lives >= MAX_LIVES)
+        return;
+
+    player.lives++;
+    sfx_play_extraLife();
 }

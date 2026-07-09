@@ -25,7 +25,7 @@ typedef struct
 
 typedef struct
 {
-    const SfxStep *steps;
+    const SfxStep *steps; // which table is currently loaded -- swappable, see startChannel()
     u8 stepCount;
     u8 stepIndex;
     u8 frameCounter;
@@ -76,6 +76,17 @@ static const SfxStep deathScreamSteps[] = {
     {550, 15, 4},
 };
 
+// Extra life (see score.c) -- a brighter, longer ascending arpeggio than the
+// powerup pickup jingle, so it reads as a bigger deal even though it shares
+// that channel (see sfx.h).
+static const SfxStep extraLifeSteps[] = {
+    {400, 4, 4},
+    {320, 2, 4},
+    {240, 1, 4},
+    {180, 0, 4},
+    {120, 0, 6},
+};
+
 static SfxChannelState shootState  = {shootSteps, 3, 0, 0, FALSE, SFX_CHANNEL_SHOOT, FALSE};
 static SfxChannelState powerupState = {powerupSteps, 4, 0, 0, FALSE, SFX_CHANNEL_POWERUP, FALSE};
 static SfxChannelState explosionState = {explosionSteps, 6, 0, 0, FALSE, SFX_CHANNEL_NOISE, TRUE};
@@ -86,8 +97,14 @@ void sfx_init(void)
     PSG_reset();
 }
 
-static void startChannel(SfxChannelState *cs)
+// `steps`/`stepCount` are (re)loaded on every start, not just stepIndex/
+// frameCounter -- lets a single channel's state (e.g. powerupState) play more
+// than one distinct jingle (see sfx_play_extraLife()) instead of being
+// permanently locked to whichever table it was first constructed with.
+static void startChannel(SfxChannelState *cs, const SfxStep *steps, u8 stepCount)
 {
+    cs->steps = steps;
+    cs->stepCount = stepCount;
     cs->stepIndex = 0;
     cs->frameCounter = 0;
     cs->playing = TRUE;
@@ -95,23 +112,28 @@ static void startChannel(SfxChannelState *cs)
 
 void sfx_play_shoot(void)
 {
-    startChannel(&shootState);
+    startChannel(&shootState, shootSteps, 3);
 }
 
 void sfx_play_powerup(void)
 {
-    startChannel(&powerupState);
+    startChannel(&powerupState, powerupSteps, 4);
 }
 
 void sfx_play_explosion(void)
 {
     PSG_setNoise(PSG_NOISE_TYPE_WHITE, PSG_NOISE_FREQ_CLOCK4);
-    startChannel(&explosionState);
+    startChannel(&explosionState, explosionSteps, 6);
 }
 
 void sfx_play_bossDeathScream(void)
 {
-    startChannel(&deathScreamState);
+    startChannel(&deathScreamState, deathScreamSteps, 8);
+}
+
+void sfx_play_extraLife(void)
+{
+    startChannel(&powerupState, extraLifeSteps, 5);
 }
 
 static void updateChannel(SfxChannelState *cs)

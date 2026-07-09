@@ -13,6 +13,14 @@ void sfx_play_shoot(void);
 void sfx_play_explosion(void);
 void sfx_play_powerup(void);
 
+// Extra life (see score.c's EXTRA_LIFE_SCORE_INTERVAL). Shares the powerup
+// channel (see sfx.c) rather than claiming one of its own -- the PSG only
+// has 4 channels and all 4 are already spoken for by shoot/powerup/
+// deathscream/explosion; a life and a powerup pickup landing on the exact
+// same frame is rare enough that one briefly cutting the other off is an
+// acceptable trade for not needing a 5th channel.
+void sfx_play_extraLife(void);
+
 // Boss-only: descending-pitch scream on death (see boss.c). Plays alongside
 // sfx_play_explosion() (different PSG channel, no conflict).
 void sfx_play_bossDeathScream(void);

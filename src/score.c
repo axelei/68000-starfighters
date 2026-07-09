@@ -54,7 +54,15 @@
 // points only, no separate bonus/powerup (per the confirmed design).
 #define POINTS_BOSS 5000
 
+// Every EXTRA_LIFE_SCORE_INTERVAL points, the player is granted an extra
+// life (see player_addLife()) -- tracked via nextLifeScore rather than
+// score % EXTRA_LIFE_SCORE_INTERVAL so a single kill's points can cross more
+// than one interval at once (e.g. POINTS_BOSS landing right on a boundary)
+// without missing a life; see addScore().
+#define EXTRA_LIFE_SCORE_INTERVAL 50000
+
 static u32 score;
+static u32 nextLifeScore;
 static u32 displayedScore = 0xFFFFFFFF; // force first draw
 static u8 displayedLives = 0xFF;        // force first draw
 static u16 displayedWave = 0xFFFF;      // force first draw
@@ -88,9 +96,23 @@ static void clearWindowRect(u16 x0, u16 y0, u16 x1, u16 y1)
     fillWindowRect(x0, y0, x1, y1);
 }
 
+// Every point-awarding function funnels through here so the extra-life
+// threshold (EXTRA_LIFE_SCORE_INTERVAL) is checked in exactly one place.
+static void addScore(u32 points)
+{
+    score += points;
+
+    while (score >= nextLifeScore)
+    {
+        nextLifeScore += EXTRA_LIFE_SCORE_INTERVAL;
+        player_addLife();
+    }
+}
+
 void score_init(void)
 {
     score = 0;
+    nextLifeScore = EXTRA_LIFE_SCORE_INTERVAL;
     displayedScore = 0xFFFFFFFF;
     displayedLives = 0xFF;
     displayedWave = 0xFFFF;
@@ -126,28 +148,28 @@ void score_addKill(EnemyKind kind)
 {
     switch (kind)
     {
-        case ENEMY_KIND_SPECIAL: score += POINTS_SPECIAL; break;
-        case ENEMY_KIND_BIG:     score += POINTS_BIG;     break;
+        case ENEMY_KIND_SPECIAL: addScore(POINTS_SPECIAL); break;
+        case ENEMY_KIND_BIG:     addScore(POINTS_BIG);     break;
         case ENEMY_KIND_WAVER_A:
         case ENEMY_KIND_WAVER_B:
-        case ENEMY_KIND_WAVER_C: score += POINTS_WAVER;   break;
-        default:                 score += POINTS_BEE;     break;
+        case ENEMY_KIND_WAVER_C: addScore(POINTS_WAVER);   break;
+        default:                 addScore(POINTS_BEE);     break;
     }
 }
 
 void score_addTurretKill(void)
 {
-    score += POINTS_TURRET;
+    addScore(POINTS_TURRET);
 }
 
 void score_addInterwavePerfectBonus(void)
 {
-    score += INTERWAVE_PERFECT_BONUS;
+    addScore(INTERWAVE_PERFECT_BONUS);
 }
 
 void score_addBossKill(void)
 {
-    score += POINTS_BOSS;
+    addScore(POINTS_BOSS);
 }
 
 u32 score_getValue(void)

@@ -41,4 +41,9 @@ AABB player_getBounds(void);
 void player_kill(void);
 bool player_isGameOver(void);
 
+// Grants one extra life (see score.c's EXTRA_LIFE_SCORE_INTERVAL) and plays
+// its jingle. Capped at MAX_LIVES so the HUD's single-digit lives field
+// (see score.c) never has to display two digits.
+void player_addLife(void);
+
 #endif // PLAYER_H
