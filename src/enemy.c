@@ -112,7 +112,7 @@ static const fix16 smallDriftSpeedsY[SMALL_DRIFT_SPEED_COUNT] =
 // pair) -- see spawnNextWaverSubgroup(), which also picks the matching
 // waverPathsNtsc/Pal table and WAVER_PATH_LENGTH_NTSC/PAL by the same
 // region check.
-#define WAVER_DESCEND_SPEED REGION_PICK(FIX16(1.5), FIX16(1.8))
+#define WAVER_DESCEND_SPEED REGION_PICK(FIX16(2.0), FIX16(2.4))
 
 // Wavers only rarely fire back -- a long cooldown means any single one
 // fires at most once or twice during its whole flight.

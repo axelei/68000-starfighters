@@ -29,8 +29,8 @@ import os
 # -- must match enemy.c --
 SCREEN_H = 224
 SPRITE_H = 16
-DESCEND_SPEED_PX_NTSC = 1.5  # matches WAVER_DESCEND_SPEED's NTSC value (fix16) in enemy.c
-DESCEND_SPEED_PX_PAL = 1.8   # matches WAVER_DESCEND_SPEED's PAL value (fix16) in enemy.c -- NTSC * 1.2
+DESCEND_SPEED_PX_NTSC = 2.0  # matches WAVER_DESCEND_SPEED's NTSC value (fix16) in enemy.c
+DESCEND_SPEED_PX_PAL = 2.4   # matches WAVER_DESCEND_SPEED's PAL value (fix16) in enemy.c -- NTSC * 1.2
 
 # (amplitude1_px, cycles1_over_flight, amplitude2_px, cycles2_over_flight) --
 # one per path variant, chosen so each reads as visually distinct in motion.
@@ -45,10 +45,10 @@ DESCEND_SPEED_PX_PAL = 1.8   # matches WAVER_DESCEND_SPEED's PAL value (fix16) i
 # the whole (region-specific) PATH_LENGTH, so the same PATHS list produces
 # the same visual shape for both regions, just sampled at a different rate.
 PATHS = [
-    (35, 1.25, 0, 0),   # wide, energetic weave
-    (45, 2.25, 0, 0),   # tighter, faster weave
-    (28, 3.5, 0, 0),    # quick, snappy weave
-    (30, 1.0, 10, 3.0), # wobble -- slow wide primary + faster small secondary
+    (20, 1.25, 0, 0),   # wide, energetic weave
+    (26, 2.25, 0, 0),   # tighter, faster weave
+    (16, 3.5, 0, 0),    # quick, snappy weave
+    (17, 1.0, 6, 3.0),  # wobble -- slow wide primary + faster small secondary
 ]
 
 OUT_PATH = os.path.join(os.path.dirname(__file__), "..", "src", "interwave_generated.h")
