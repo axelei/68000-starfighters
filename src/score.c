@@ -58,6 +58,21 @@
 #define WAVE_ANNOUNCE_TEXT_Y    0
 #define WAVE_ANNOUNCE_BAND_ROWS 1 // just row 0 -- the single line of text
 
+// PAUSE banner: "PAUSE" flanked by an animated dash that marches across a
+// fixed-width field on either side (see pauseAnimFrames) -- PAUSE_DECOR_LEN
+// is the widest frame, so VDP_drawTextFill() (see drawPauseDecorations())
+// always blanks a shorter frame's leftover chars from the previous one.
+// "PAUSE" itself is drawn once and never moves; only the decorations either
+// side of it get redrawn as the animation advances.
+#define PAUSE_DECOR_LEN 4 // widest animation frame ("   -")
+#define PAUSE_TEXT_LEN 5 // "PAUSE"
+#define PAUSE_TOTAL_LEN (PAUSE_DECOR_LEN * 2 + PAUSE_TEXT_LEN)
+#define PAUSE_LEFT_DECOR_X  ((HUD_PANEL_COL0 - PAUSE_TOTAL_LEN) / 2)
+#define PAUSE_TEXT_X        (PAUSE_LEFT_DECOR_X + PAUSE_DECOR_LEN)
+#define PAUSE_RIGHT_DECOR_X (PAUSE_TEXT_X + PAUSE_TEXT_LEN)
+#define PAUSE_ANIM_FRAME_COUNT 4
+#define PAUSE_ANIM_FRAME_TICKS REGION_PICK(15, 13) // ~0.25s per frame
+
 #define POINTS_BEE     100
 #define POINTS_SPECIAL 300
 #define POINTS_BIG     1000
@@ -90,6 +105,25 @@ static u16 displayedTime = 0xFFFF;      // force first draw
 // as every other sprite pool in this game; just individually shown/hidden
 // rather than repositioned.
 static Sprite *lifeIcons[LIFE_ICON_MAX];
+
+// A dash marching one position per frame across a 4-char field -- indexed
+// directly (left side) or reversed (right side, see drawPauseDecorations())
+// so the two sides march in opposite directions instead of both drifting
+// the same way. Single-step between every consecutive pair (including the
+// wrap from the last entry back to the first), unlike the previous set
+// (which had a blank frame partway through, making the dash visibly jump
+// two positions in one step right after it).
+static const char *const pauseAnimFrames[PAUSE_ANIM_FRAME_COUNT] = {
+    "-   ",
+    " -  ",
+    "  - ",
+    "   -",
+};
+
+static bool pauseActive;
+static u8 pauseAnimFrame;
+static u16 pauseAnimTimer;
+static void drawPauseDecorations(void); // defined below, used by score_hud_update()
 
 // Paints a WINDOW-plane rectangle solid black using an opaque fill tile --
 // blank (index 0) tiles are transparent on Genesis hardware and would let
@@ -266,6 +300,20 @@ void score_hud_update(void)
         }
     }
 
+    if (pauseActive)
+    {
+        if (pauseAnimTimer > 0)
+        {
+            pauseAnimTimer--;
+        }
+        else
+        {
+            pauseAnimFrame = (pauseAnimFrame + 1) % PAUSE_ANIM_FRAME_COUNT;
+            pauseAnimTimer = PAUSE_ANIM_FRAME_TICKS;
+            drawPauseDecorations();
+        }
+    }
+
     // 1-indexed: the wave currently in play, not the (0-based) cleared
     // count -- reads naturally as "WAVE 1" from the very start of a game.
     u16 waveNumber = formation_wavesCleared() + 1;
@@ -326,19 +374,33 @@ void score_hideWaveAnnouncement(void)
     VDP_setWindowVPos(FALSE, 0);
 }
 
+static void drawPauseDecorations(void)
+{
+    // Right side reads the same frame table back-to-front -- same speed,
+    // opposite marching direction, rather than both sides drifting the
+    // same way.
+    u8 rightFrame = PAUSE_ANIM_FRAME_COUNT - 1 - pauseAnimFrame;
+    VDP_drawTextFill(pauseAnimFrames[pauseAnimFrame], PAUSE_LEFT_DECOR_X, WAVE_ANNOUNCE_TEXT_Y, PAUSE_DECOR_LEN);
+    VDP_drawTextFill(pauseAnimFrames[rightFrame], PAUSE_RIGHT_DECOR_X, WAVE_ANNOUNCE_TEXT_Y, PAUSE_DECOR_LEN);
+}
+
 void score_showPause(void)
 {
     // Same single-row top band as the wave announcement.
     VDP_setWindowVPos(FALSE, WAVE_ANNOUNCE_BAND_ROWS);
     clearWindowRect(0, 0, HUD_PANEL_COL0, WAVE_ANNOUNCE_BAND_ROWS);
 
-    const char *text = "PAUSE";
-    u16 x = (HUD_PANEL_COL0 - strlen(text)) / 2;
-    VDP_drawText(text, x, WAVE_ANNOUNCE_TEXT_Y);
+    VDP_drawText("PAUSE", PAUSE_TEXT_X, WAVE_ANNOUNCE_TEXT_Y);
+
+    pauseActive = TRUE;
+    pauseAnimFrame = 0;
+    pauseAnimTimer = PAUSE_ANIM_FRAME_TICKS;
+    drawPauseDecorations();
 }
 
 void score_hidePause(void)
 {
+    pauseActive = FALSE;
     VDP_setWindowVPos(FALSE, 0);
 }
 
