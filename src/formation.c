@@ -151,14 +151,24 @@ static void beginEncounter(void)
 // with combat for the player's attention.
 static void startWave(u16 index)
 {
-    waveSpawnPending = TRUE;
-    score_showWaveAnnouncement(index % WAVE_COUNT + 1);
-    announceTimer = WAVE_ANNOUNCE_FRAMES;
-
     // Vary the scrolling terrain/starfield over a long game, but only here,
     // at wave boundaries -- see terrain_requestRegen() for why this can't
     // just happen continuously during scroll.
     terrain_requestRegen();
+
+    // formation_update() keeps running behind the "GAME OVER" screen (see
+    // main.c) so the scene stays animated, but no banner should pop up over
+    // it once the player's already out of lives -- so skip the announcement
+    // and go straight to spawning instead of gating on announceTimer.
+    if (player_isGameOver())
+    {
+        spawnWave(index);
+        return;
+    }
+
+    waveSpawnPending = TRUE;
+    score_showWaveAnnouncement(index % WAVE_COUNT + 1);
+    announceTimer = WAVE_ANNOUNCE_FRAMES;
 }
 
 void formation_init(void)
@@ -178,6 +188,22 @@ void formation_init(void)
 
 void formation_update(void)
 {
+    // If the player runs out of lives while a "WAVE N" banner is already up,
+    // don't let it keep sitting there over the "GAME OVER" text -- cut it
+    // short and spawn immediately, same as startWave() does when game-over
+    // is already true going in.
+    if (announceTimer > 0 && player_isGameOver())
+    {
+        announceTimer = 0;
+        score_hideWaveAnnouncement();
+        if (waveSpawnPending)
+        {
+            spawnWave(waveIndex);
+            waveSpawnPending = FALSE;
+        }
+        return;
+    }
+
     if (announceTimer > 0)
     {
         announceTimer--;
