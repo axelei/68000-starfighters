@@ -34,10 +34,10 @@ typedef enum
 // spawning one batch at a time and reusing the same MAX_ENEMIES slots keeps
 // the enemy pool's contribution bounded to WAVER_SUBGROUP_SIZE regardless of
 // how many batches make up the whole formation.
-#define WAVER_GRID_ROWS      4
-#define WAVER_GRID_COLS      6
-#define WAVER_SUBGROUP_SIZE  (WAVER_GRID_ROWS * WAVER_GRID_COLS) // 24
-#define WAVER_SUBGROUP_COUNT 3
+#define WAVER_GRID_ROWS      3
+#define WAVER_GRID_COLS      4
+#define WAVER_SUBGROUP_SIZE  (WAVER_GRID_ROWS * WAVER_GRID_COLS) // 12
+#define WAVER_SUBGROUP_COUNT 5
 
 // Two distinct inter-wave formation shapes, alternated automatically each
 // time enemy_spawnWaverFormation() is called (see currentWaverShape in

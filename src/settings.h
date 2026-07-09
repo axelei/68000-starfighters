@@ -15,7 +15,7 @@
 // starts. Batches are spawned sequentially (never more than one alive at
 // once) rather than all up front -- see WAVER_SUBGROUP_COUNT's comment in
 // enemy.h for why that matters well beyond just this pause.
-#define INTERWAVE_ENTRY_STAGGER_SECONDS 4
+#define INTERWAVE_ENTRY_STAGGER_SECONDS 2
 
 // Debug/dev-only overrides, all disabled (0/FALSE) by default -- flip these
 // while working on a specific wave or feature instead of having to play

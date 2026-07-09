@@ -21,7 +21,7 @@ Enemy enemies[MAX_ENEMIES];
 
 #define HP_BEE     10
 #define HP_SPECIAL 10
-#define HP_BIG     100
+#define HP_BIG     45
 #define HP_WAVER   1
 
 // BEE/SPECIAL: occasionally peel out of formation, dive down and off the
@@ -82,7 +82,24 @@ static const fix16 smallDriftSpeedsY[SMALL_DRIFT_SPEED_COUNT] =
 #define WAVER_BATCH_GAP_FRAMES REGION_PICK(INTERWAVE_ENTRY_STAGGER_SECONDS * 60, INTERWAVE_ENTRY_STAGGER_SECONDS * 50)
 #define WAVER_COL_SPACING 18 // px between column centers -- edges just touch (16px sprite), no overlap
 #define WAVER_ROW_SPACING 30
-#define WAVER_ROW_STAGGER_FRAMES REGION_PICK(90, 75) // 1.5s between each row starting to scroll in
+#define WAVER_ROW_STAGGER_FRAMES REGION_PICK(30, 25) // ~0.5s between each row starting to scroll in
+
+// A fixed 2s pause before the very first batch of a freshly-started
+// formation (see enemy_spawnWaverFormation()) -- gives the player a beat to
+// react to the previous wave/formation ending before the next one starts
+// scrolling in, independent of WAVER_BATCH_GAP_FRAMES (the shorter gap
+// between batches *within* the same formation, once it's underway).
+#define WAVER_FORMATION_START_DELAY_FRAMES REGION_PICK(120, 100)
+
+// GRID_WEAVE horizontal anchor varies per batch (see
+// spawnNextGridWeaveSubgroup()) so successive batches don't always weave
+// through the exact same strip of the playfield -- picked at random from
+// these 3 positions each time a batch spawns. Kept within
+// PLAY_AREA_X_MIN/MAX with enough margin that even the widest path
+// amplitude (see interwave_generated.h) plus the grid's own column spread
+// can't push a member past the play area edge.
+#define WAVER_ANCHOR_OFFSET 30
+#define WAVER_ANCHOR_COUNT 3
 
 // Per-row offset into the shared path clock (see waverRowPhase in enemy.h)
 // -- each row samples waverPaths this many frames "ahead" of the row above
@@ -117,12 +134,12 @@ static const fix16 smallDriftSpeedsY[SMALL_DRIFT_SPEED_COUNT] =
 // a steep constant vertical dive off the bottom. Rows enter in quick
 // succession (SIDE_DIVE_ROW_STAGGER_FRAMES apart) via the same startDelay
 // mechanism as the grid-weave rows.
-#define SIDE_DIVE_ROW_COUNT          8
-#define SIDE_DIVE_SUBGROUP_SIZE      (SIDE_DIVE_ROW_COUNT * 2) // 16
+#define SIDE_DIVE_ROW_COUNT          5
+#define SIDE_DIVE_SUBGROUP_SIZE      (SIDE_DIVE_ROW_COUNT * 2) // 10
 #define SIDE_DIVE_COL_GAP            18 // px between the two members of a row
-#define SIDE_DIVE_ROW_STAGGER_FRAMES REGION_PICK(20, 17) // ~1/3s between each row starting
+#define SIDE_DIVE_ROW_STAGGER_FRAMES REGION_PICK(14, 12) // ~1/4s between each row starting
 #define SIDE_DIVE_START_Y            24 // near the top, not mid-screen -- leaves most of the screen for the dive
-#define SIDE_DIVE_DIVE_VY       REGION_PICK(FIX16(1.8), FIX16(2.16)) // steep constant descent once the sweep finishes
+#define SIDE_DIVE_DIVE_VY       REGION_PICK(FIX16(2.4), FIX16(2.88)) // steep constant descent once the sweep finishes
 
 // BEE/SPECIAL only: caps how many can be away from their formation slot
 // (diving out and/or swooping back in) at the same time.
@@ -154,6 +171,7 @@ static EnemyKind waverFormationKind;
 static u16 waverBatchesSpawned;  // how many of WAVER_SUBGROUP_COUNT have started so far
 static u16 waverGapTimer;        // frames since the current (cleared) batch was confirmed gone
 static bool waverFormationActive; // FALSE once every batch has been spawned and cleared
+static bool waverAwaitingFirstBatch; // TRUE until this formation's first batch has actually spawned -- see WAVER_FORMATION_START_DELAY_FRAMES
 
 // Killed (not merely flown off screen) since the last
 // enemy_spawnWaverFormation() call -- see enemies_waverKillCount().
@@ -242,6 +260,7 @@ void enemies_init(void)
     waverBatchesSpawned = 0;
     waverGapTimer = 0;
     waverFormationActive = FALSE;
+    waverAwaitingFirstBatch = FALSE;
     waverKillCount = 0;
 }
 
@@ -757,7 +776,12 @@ static s16 gridOffset(u16 index, u16 count, s16 spacing)
 // view.
 static void spawnNextGridWeaveSubgroup(void)
 {
-    s16 anchorX = (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2;
+    static const s16 waverAnchorX[WAVER_ANCHOR_COUNT] = {
+        (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2 - WAVER_ANCHOR_OFFSET,
+        (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2,
+        (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2 + WAVER_ANCHOR_OFFSET,
+    };
+    s16 anchorX = waverAnchorX[random() % WAVER_ANCHOR_COUNT];
     s16 h = (s16) enemy_heightForKind(waverFormationKind);
 
     currentWaverClock = 0;
@@ -812,8 +836,8 @@ static void spawnNextGridWeaveSubgroup(void)
 // from the actual distance keeps it consistent. Never below
 // SIDE_DIVE_MIN_SWEEP_FRAMES so a very short hop still reads as a deliberate
 // swoop rather than a snap.
-#define SIDE_DIVE_SWEEP_SPEED_PX     REGION_PICK(3, 4) // 3*1.2=3.6, rounded
-#define SIDE_DIVE_MIN_SWEEP_FRAMES   REGION_PICK(10, 8)
+#define SIDE_DIVE_SWEEP_SPEED_PX     REGION_PICK(4, 5) // 4*1.2=4.8, rounded
+#define SIDE_DIVE_MIN_SWEEP_FRAMES   REGION_PICK(8, 7)
 
 // Spawns exactly one batch of SIDE_DIVE_SUBGROUP_SIZE enemies of
 // waverFormationKind: SIDE_DIVE_ROW_COUNT rows of 2 side by side (offset
@@ -880,22 +904,29 @@ void enemy_spawnWaverFormation(EnemyKind kind)
     waverBatchesSpawned = 0;
     waverGapTimer = 0;
     waverFormationActive = TRUE;
+    waverAwaitingFirstBatch = TRUE;
     waverKillCount = 0;
 
-    spawnNextWaverSubgroup();
+    // First batch doesn't spawn immediately -- see
+    // updateWaverFormationSequencing(), which waits out
+    // WAVER_FORMATION_START_DELAY_FRAMES the same way it waits out
+    // WAVER_BATCH_GAP_FRAMES between later batches.
 }
 
-// Advances the current inter-wave formation once its on-screen batch is
-// fully gone: waits WAVER_BATCH_GAP_FRAMES, then either spawns the next
-// batch or, if that was the last one, marks the whole formation done. Called
-// every frame from enemies_update() while waverFormationActive.
+// Advances the current inter-wave formation: waits either
+// WAVER_FORMATION_START_DELAY_FRAMES (before the very first batch) or
+// WAVER_BATCH_GAP_FRAMES (once its on-screen batch is fully gone, between
+// later batches), then either spawns the next batch or, if that was the
+// last one, marks the whole formation done. Called every frame from
+// enemies_update() while waverFormationActive.
 static void updateWaverFormationSequencing(void)
 {
     for (u16 i = 0; i < MAX_ENEMIES; i++)
         if (enemies[i].active && enemies[i].isWaver)
             return; // still something from the current batch on screen
 
-    // The current batch is fully gone.
+    // The current batch is fully gone (or, if awaiting the first batch,
+    // there was never one to begin with).
     if (waverBatchesSpawned >= WAVER_SUBGROUP_COUNT)
     {
         waverFormationActive = FALSE;
@@ -906,9 +937,11 @@ static void updateWaverFormationSequencing(void)
     // matter which frame first notices the batch is clear -- the gap always
     // measures from that point.
     waverGapTimer++;
-    if (waverGapTimer >= WAVER_BATCH_GAP_FRAMES)
+    u16 gapTarget = waverAwaitingFirstBatch ? WAVER_FORMATION_START_DELAY_FRAMES : WAVER_BATCH_GAP_FRAMES;
+    if (waverGapTimer >= gapTarget)
     {
         waverGapTimer = 0;
+        waverAwaitingFirstBatch = FALSE;
         spawnNextWaverSubgroup();
     }
 }
