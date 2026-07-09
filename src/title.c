@@ -9,6 +9,12 @@
 #define PRESS_START_X 14
 #define PRESS_START_Y 20
 
+// Credits line, bottom of the screen -- 38 chars, centered across the 40-tile-
+// wide screen with a 1-row margin above the bottom edge.
+#define CREDITS_TEXT "By Krusher 2026 - Licensed under GPL 3"
+#define CREDITS_X 1
+#define CREDITS_Y 26
+
 // 60 frames (1s) out + 60 frames (1s) in = 2s total, as requested.
 #define FADE_FRAMES REGION_PICK(60, 50) // ~1s -- see game.h's REGION_PICK
 
@@ -59,6 +65,7 @@ void title_run(void)
     // starts once gameplay begins), so drawing text on it directly is safe.
     VDP_setTextPlane(BG_A);
     VDP_drawText("PRESS START", PRESS_START_X, PRESS_START_Y);
+    VDP_drawText(CREDITS_TEXT, CREDITS_X, CREDITS_Y);
 
     // Loaded once here and left running -- see main.c/sfx.c if in-game music
     // is added later, since sfx.c currently writes directly to the PSG from
