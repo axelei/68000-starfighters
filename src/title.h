@@ -8,6 +8,12 @@
 // once, before setting up the game scene.
 void title_run(void);
 
+// Redraws just the logo's tiles onto BG_A at their usual position, without
+// touching PAL0 -- used by options.c to put the logo back as a (dimmed)
+// backdrop behind its own menu, since PAL0 there holds a shadowed copy of
+// the title palette rather than the bright one drawTitleScreen() loads.
+void title_drawLogoBackground(void);
+
 // Fades the screen back in (1s) using the 3 gameplay hardware palettes
 // (PAL_PLAYER/PAL_ENEMY/PAL_ENVIRONMENT -- see game.h). Call once the game
 // scene (sprites, tilemaps) is fully set up but still invisible (black)

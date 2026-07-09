@@ -40,11 +40,21 @@ static void drawTitleScreen(void)
     // wouldn't otherwise overwrite outside its own footprint.
     VDP_clearPlane(BG_A, TRUE);
 
+    // loadPal=TRUE: also resets PAL0 back to the title's bright colors --
+    // needed on the way back from the options scene, which leaves PAL0
+    // holding a dimmed copy for its own shadowed backdrop (see
+    // title_drawLogoBackground()/options.c).
     VDP_drawImageEx(BG_A, &title_image, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, TITLE_BASE_TILE),
                      LOGO_TILE_X, LOGO_TILE_Y, TRUE, FALSE);
 
     VDP_drawText("PRESS START", PRESS_START_X, PRESS_START_Y);
     VDP_drawText(CREDITS_TEXT, CREDITS_X, CREDITS_Y);
+}
+
+void title_drawLogoBackground(void)
+{
+    VDP_drawImageEx(BG_A, &title_image, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, TITLE_BASE_TILE),
+                     LOGO_TILE_X, LOGO_TILE_Y, FALSE, FALSE);
 }
 
 void title_run(void)

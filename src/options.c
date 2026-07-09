@@ -1,6 +1,7 @@
 #include "options.h"
 #include "resources.h"
 #include "sfx.h"
+#include "title.h"
 
 #define OPTIONS_DEFAULT_LIVES          4
 #define OPTIONS_DEFAULT_EXTRALIFE_INDEX 1 // index into extraLifeValues/Labels -- 50000
@@ -11,6 +12,42 @@ static const char *const extraLifeLabels[3] = {"NONE", "50000", "100000"};
 
 static u8 livesSetting;
 static u8 extraLifeIndex;
+
+// Dimmed copy of the title logo's palette (see title_drawLogoBackground()),
+// loaded onto PAL0 for the whole time this scene is up so the logo reads as
+// a shadowed backdrop behind the menu rather than competing with it at full
+// brightness. Halves each color channel, rounding down to the nearest even
+// step (VDP colors only use even 3-bit values -- see pal.h's
+// VDPPALETTE_COLORMASK). Not restored on the way out -- title.c always
+// redraws the title screen immediately after options_run() returns, which
+// reloads PAL0 back to the bright original (see drawTitleScreen()).
+static u16 shadowPalette[16];
+
+static void buildShadowPalette(void)
+{
+    const u16 *src = title_image.palette->data;
+
+    for (u16 i = 0; i < 16; i++)
+    {
+        u16 c = src[i];
+        u16 r = (c & 0x000E) >> 1;
+        u16 g = (c & 0x00E0) >> 1;
+        u16 b = (c & 0x0E00) >> 1;
+        shadowPalette[i] = (r & 0x000E) | (g & 0x00E0) | (b & 0x0E00);
+    }
+}
+
+// Redraws the logo (dimmed, via the shadow palette PAL0 already holds --
+// see options_run()) as this scene's backdrop, in place of the plain
+// VDP_clearPlane() blank a menu screen would otherwise get. Still clears
+// first: this scene has several screens (main menu, sound test) sharing
+// BG_A, so leftover opaque text tiles from whichever one was up before need
+// blanking before the logo (which only covers its own rows) goes back down.
+static void drawShadowedBackground(void)
+{
+    VDP_clearPlane(BG_A, TRUE);
+    title_drawLogoBackground();
+}
 
 void options_init(void)
 {
@@ -92,7 +129,7 @@ static void drawExtraLifeValue(void)
 // drawExtraLifeValue()).
 static void drawMainMenuStatic(void)
 {
-    VDP_clearPlane(BG_A, TRUE);
+    drawShadowedBackground();
     VDP_drawText("OPTIONS", 16, MENU_TITLE_Y);
 
     VDP_drawText("LIVES", MENU_X, ROW_LIVES_Y);
@@ -158,7 +195,7 @@ static void drawSoundTestValue(void)
 // Drawn once per entry, not per keypress -- see drawMainMenuStatic().
 static void drawSoundTestStatic(void)
 {
-    VDP_clearPlane(BG_A, TRUE);
+    drawShadowedBackground();
     VDP_drawText("SOUND TEST", 15, SOUND_TEST_TITLE_Y);
     drawSoundTestValue();
 
@@ -233,6 +270,17 @@ void options_run(void)
     while (JOY_readJoypad(JOY_1) & (BUTTON_A | BUTTON_START))
         SYS_doVBlankProcess();
 
+    buildShadowPalette();
+    PAL_setPalette(PAL0, shadowPalette, DMA);
+
+    // Text stays at full brightness against the now-dimmed logo: PAL1 is
+    // free to borrow here (PAL_ENEMY, only actually loaded once gameplay
+    // starts -- see game.h), so load the title's real colors onto it and
+    // point VDP_drawText() there instead of at PAL0. Restored to the usual
+    // PAL0 below on the way out.
+    PAL_setPalette(PAL1, title_image.palette->data, DMA);
+    VDP_setTextPalette(PAL1);
+
     drawMainMenuStatic();
     drawMenuCursor(selectedRow, TRUE);
 
@@ -296,11 +344,13 @@ void options_run(void)
             }
             else if (selectedRow == OPT_ROW_BACK)
             {
+                VDP_setTextPalette(PAL0);
                 return;
             }
         }
         else if (pressed & BUTTON_B)
         {
+            VDP_setTextPalette(PAL0);
             return;
         }
     }
