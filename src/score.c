@@ -50,7 +50,40 @@
 // exactly equals the rows that actually have text on them, with nothing
 // above or below it hidden unnecessarily.
 #define GAMEOVER_HUD_Y 0
-#define GAMEOVER_BAND_ROWS 6 // rows 0..5, one per line below, no gaps
+#define GAMEOVER_BAND_ROWS 5 // rows 0..4 -- "GAME OVER" itself is the sprite-letter animation below, not drawn here
+
+// "GAME OVER" assembles centered in the playfield (not the whole screen --
+// PLAY_AREA_X/Y_MIN/MAX exclude the HUD side panel, see game.h) from 8
+// individual letter sprites (spr_gameover_letters -- see resources.res)
+// instead of being drawn on the WINDOW plane like the rest of the
+// game-over text: each spirals in from a point evenly spaced around a
+// circle (GAMEOVER_ORBIT_RADIUS_START out, converging on the circle's
+// center, which sits at the playfield's center), then peels back off from
+// that shared center out to its own final position in the spelled-out
+// word, landing exactly on it -- see gameoverAnimStep().
+#define GAMEOVER_LETTER_COUNT 8 // G,A,M,E,O,V,E,R -- "GAME OVER" without the space
+#define GAMEOVER_LETTER_W     16
+#define GAMEOVER_WORD_LEN     4  // "GAME" / "OVER" -- both 4 letters
+#define GAMEOVER_WORD_GAP     8  // extra px between the two words
+
+#define GAMEOVER_PLAYFIELD_CENTER_X ((PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2)
+#define GAMEOVER_PLAYFIELD_CENTER_Y ((PLAY_AREA_Y_MIN + PLAY_AREA_Y_MAX) / 2)
+// Sprite position is its top-left corner -- offset by half a letter so the
+// letter's actual visual center (not its corner) lands on the playfield's
+// center point.
+#define GAMEOVER_SPIRAL_CENTER_X (GAMEOVER_PLAYFIELD_CENTER_X - GAMEOVER_LETTER_W / 2)
+#define GAMEOVER_LETTERS_Y       (GAMEOVER_PLAYFIELD_CENTER_Y - GAMEOVER_LETTER_W / 2)
+
+// Index into spr_gameover_letters' 7 unique glyph frames (G,A,M,E,O,V,R, in
+// that order -- see generate_placeholders.py's gameover_letters()) for each
+// of the 8 displayed letters.
+static const u8 gameoverLetterFrame[GAMEOVER_LETTER_COUNT] = {0, 1, 2, 3, 4, 5, 3, 6};
+
+#define GAMEOVER_SPIRAL_FRAMES REGION_PICK(110, 92) // ~1.8s spiraling into the shared center
+#define GAMEOVER_SETTLE_FRAMES REGION_PICK(35, 29)  // ~0.6s peeling out to each letter's own slot
+#define GAMEOVER_ANIM_FRAMES   (GAMEOVER_SPIRAL_FRAMES + GAMEOVER_SETTLE_FRAMES)
+#define GAMEOVER_ORBIT_RADIUS_START      90
+#define GAMEOVER_ORBIT_DEGREES_PER_FRAME 6 // full loop every 60 frames -- slower sweep than before
 
 // Same top-band trick as the game-over screen, but just for the "WAVE N"
 // announcement (see formation.c), which only ever shows during the pause
@@ -124,6 +157,20 @@ static bool pauseActive;
 static u8 pauseAnimFrame;
 static u16 pauseAnimTimer;
 static void drawPauseDecorations(void); // defined below, used by score_hud_update()
+
+typedef struct
+{
+    Sprite *sprite;
+    s16 finalX, finalY;   // its resting position once "GAME OVER" is spelled out
+    u16 startAngleDeg;    // where it starts on the spiral-in circle
+} GameOverLetter;
+
+// Reused across restarts (only ever created once -- see score_init()), same
+// as lifeIcons.
+static GameOverLetter gameoverLetters[GAMEOVER_LETTER_COUNT];
+static bool gameoverAnimActive;
+static u16 gameoverAnimTimer; // counts up from 0 to GAMEOVER_ANIM_FRAMES while active
+static void gameoverAnimStep(void); // defined below, used by score_hud_update()
 
 // Paints a WINDOW-plane rectangle solid black using an opaque fill tile --
 // blank (index 0) tiles are transparent on Genesis hardware and would let
@@ -230,6 +277,28 @@ void score_init(void)
         SPR_setAnim(lifeIcons[i], LIFE_ICON_ANIM);
         SPR_setVisibility(lifeIcons[i], HIDDEN);
     }
+
+    // Regular (LOW) priority, like every other gameplay sprite -- these
+    // fly freely over the scene, not over the WINDOW plane's HUD text, so
+    // there's no need for the lifeIcons' HIGH-priority workaround. Created
+    // once and reused across restarts; positions/angles are fixed layout,
+    // computed once here rather than every time the animation starts.
+    gameoverAnimActive = FALSE;
+    s16 totalWidth = GAMEOVER_LETTER_COUNT * GAMEOVER_LETTER_W + GAMEOVER_WORD_GAP;
+    s16 startX = GAMEOVER_PLAYFIELD_CENTER_X - totalWidth / 2;
+    for (u16 i = 0; i < GAMEOVER_LETTER_COUNT; i++)
+    {
+        GameOverLetter *L = &gameoverLetters[i];
+        L->finalX = startX + i * GAMEOVER_LETTER_W + (i >= GAMEOVER_WORD_LEN ? GAMEOVER_WORD_GAP : 0);
+        L->finalY = GAMEOVER_LETTERS_Y;
+        L->startAngleDeg = i * (360 / GAMEOVER_LETTER_COUNT);
+
+        if (L->sprite == NULL)
+            L->sprite = SPR_addSprite(&spr_gameover_letters, L->finalX, L->finalY,
+                                       TILE_ATTR(PAL_PLAYER, FALSE, FALSE, FALSE));
+        SPR_setFrame(L->sprite, gameoverLetterFrame[i]);
+        SPR_setVisibility(L->sprite, HIDDEN);
+    }
 }
 
 void score_addKill(EnemyKind kind)
@@ -335,18 +404,78 @@ void score_hud_update(void)
         uintToStr(displayedTime, buf, 3);
         VDP_drawText(buf, TIME_HUD_X, TIME_HUD_Y + 1);
     }
+
+    gameoverAnimStep();
 }
 
-// Hides the LIVES row's ship icons (see LIFE_ICON_MAX) without releasing
-// their sprite handles -- mirrors enemies_hideAll()/turrets_hideAll(), for
-// the same reason (called between rounds, see main.c): the tilemap-based
-// part of the HUD gets wiped by VDP_clearTextArea() there, but these are
-// independent VDP sprites, not tiles, and need their own hide call or
-// they'd hang frozen on screen through the next title screen.
+// Hides the LIVES row's ship icons (see LIFE_ICON_MAX) and the "GAME OVER"
+// letter sprites, without releasing their handles -- mirrors
+// enemies_hideAll()/turrets_hideAll(), for the same reason (called between
+// rounds, see main.c): the tilemap-based part of the HUD gets wiped by
+// VDP_clearTextArea() there, but these are independent VDP sprites, not
+// tiles, and need their own hide call or they'd hang frozen on screen
+// through the next title screen.
 void score_hideLivesIcons(void)
 {
     for (u16 i = 0; i < LIFE_ICON_MAX; i++)
         SPR_setVisibility(lifeIcons[i], HIDDEN);
+
+    gameoverAnimActive = FALSE;
+    for (u16 i = 0; i < GAMEOVER_LETTER_COUNT; i++)
+        SPR_setVisibility(gameoverLetters[i].sprite, HIDDEN);
+}
+
+// Spirals every "GAME OVER" letter in from its own point on a circle
+// (GAMEOVER_ORBIT_RADIUS_START out, GAMEOVER_SPIRAL_FRAMES long) down to
+// the circle's shared center, then peels each one back out
+// (GAMEOVER_SETTLE_FRAMES long) from that center to its own final position
+// in the spelled-out word -- landing exactly on it, which a pure spiral
+// alone can't guarantee since every letter's radius converges on the same
+// point regardless of where its own slot actually is. A no-op once the
+// animation isn't active (see score_showGameOver()/score_hideLivesIcons()).
+static void gameoverAnimStep(void)
+{
+    if (!gameoverAnimActive)
+        return;
+
+    s16 centerX = GAMEOVER_SPIRAL_CENTER_X;
+    s16 centerY = GAMEOVER_LETTERS_Y;
+
+    for (u16 i = 0; i < GAMEOVER_LETTER_COUNT; i++)
+    {
+        GameOverLetter *L = &gameoverLetters[i];
+        s16 x, y;
+
+        if (gameoverAnimTimer < GAMEOVER_SPIRAL_FRAMES)
+        {
+            // Eased (quadratic), not a flat linear shrink -- barely closing
+            // in at first, then progressively faster as it nears the
+            // center, which reads as a much more deliberate "being pulled
+            // in" than a constant-rate shrink.
+            fix16 remainFrac = F16_div(FIX16(GAMEOVER_SPIRAL_FRAMES - gameoverAnimTimer), FIX16(GAMEOVER_SPIRAL_FRAMES));
+            fix16 eased = F16_mul(remainFrac, remainFrac);
+            fix16 radius = F16_mul(FIX16(GAMEOVER_ORBIT_RADIUS_START), eased);
+            u16 angleDeg = (L->startAngleDeg + gameoverAnimTimer * GAMEOVER_ORBIT_DEGREES_PER_FRAME) % 360;
+            x = centerX + F16_toInt(F16_mul(F16_cos(FIX16(angleDeg)), radius));
+            y = centerY + F16_toInt(F16_mul(F16_sin(FIX16(angleDeg)), radius));
+        }
+        else
+        {
+            u16 t = gameoverAnimTimer - GAMEOVER_SPIRAL_FRAMES;
+            x = centerX + (s16) (((s32) (L->finalX - centerX) * t) / GAMEOVER_SETTLE_FRAMES);
+            y = centerY + (s16) (((s32) (L->finalY - centerY) * t) / GAMEOVER_SETTLE_FRAMES);
+        }
+
+        SPR_setPosition(L->sprite, x, y);
+    }
+
+    gameoverAnimTimer++;
+    if (gameoverAnimTimer >= GAMEOVER_ANIM_FRAMES)
+    {
+        gameoverAnimActive = FALSE;
+        for (u16 i = 0; i < GAMEOVER_LETTER_COUNT; i++)
+            SPR_setPosition(gameoverLetters[i].sprite, gameoverLetters[i].finalX, gameoverLetters[i].finalY);
+    }
 }
 
 void score_showWaveAnnouncement(u16 waveNumber)
@@ -420,12 +549,18 @@ void score_showGameOver(void)
     VDP_setWindowVPos(FALSE, GAMEOVER_BAND_ROWS);
     clearWindowRect(0, 0, HUD_PANEL_COL0, GAMEOVER_BAND_ROWS);
 
-    VDP_drawText("GAME OVER", 13, GAMEOVER_HUD_Y);
-    VDP_drawText("FINAL SCORE", 12, GAMEOVER_HUD_Y + 1);
+    // "GAME OVER" itself isn't drawn here -- see gameoverAnimStep()'s
+    // sprite-letter animation, kicked off below.
+    VDP_drawText("FINAL SCORE", 12, GAMEOVER_HUD_Y);
     uintToStr(score, buf, 6);
-    VDP_drawText(buf, 14, GAMEOVER_HUD_Y + 2);
-    VDP_drawText("WAVES CLEARED", 11, GAMEOVER_HUD_Y + 3);
+    VDP_drawText(buf, 14, GAMEOVER_HUD_Y + 1);
+    VDP_drawText("WAVES CLEARED", 11, GAMEOVER_HUD_Y + 2);
     uintToStr(formation_wavesCleared(), buf, 2);
-    VDP_drawText(buf, 17, GAMEOVER_HUD_Y + 4);
-    VDP_drawText("PRESS START", 12, GAMEOVER_HUD_Y + 5);
+    VDP_drawText(buf, 17, GAMEOVER_HUD_Y + 3);
+    VDP_drawText("PRESS START", 12, GAMEOVER_HUD_Y + 4);
+
+    gameoverAnimActive = TRUE;
+    gameoverAnimTimer = 0;
+    for (u16 i = 0; i < GAMEOVER_LETTER_COUNT; i++)
+        SPR_setVisibility(gameoverLetters[i].sprite, VISIBLE);
 }

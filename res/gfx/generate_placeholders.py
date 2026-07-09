@@ -805,6 +805,43 @@ def banner_font():
     return combined
 
 
+def gameover_letters():
+    # Individual "GAME OVER" letters as SPRITE frames -- flown in on a
+    # circular path and assembled at screen center by score.c's game-over
+    # animation, so they can't reuse banner_font()'s WINDOW-plane tiles
+    # (those have an opaque black backing baked in, meant for sitting on a
+    # text plane, not flying freely over the scene -- see banner_font()'s
+    # comment). One 16x16 frame per *unique* letter needed to spell
+    # "GAME OVER" -- G,A,M,E,O,V,R (7; "GAME OVER" repeats E, reused by
+    # score.c rather than duplicated here) -- nearest-neighbor upscaled 2x
+    # from the same 8x8 bitmap strike banner_font() uses, so the shape
+    # matches the game's own HUD font exactly, just bigger, with a
+    # transparent (not opaque) background appropriate for a sprite.
+    letters = "GAMEOVR"
+    w = h = 16
+    pal = PLAYER_PAL
+
+    font_path = os.path.join(os.path.dirname(__file__), "fonts", "master_512.ttf")
+    font = ImageFont.truetype(font_path, 8)
+
+    combined = new_indexed((w * len(letters), h), pal)
+
+    for i, ch in enumerate(letters):
+        glyph = Image.new("L", (8, 8), 0)
+        d = ImageDraw.Draw(glyph)
+        d.text((0, 0), ch, fill=255, font=font)
+        for y in range(8):
+            for x in range(8):
+                if glyph.getpixel((x, y)) > 128:
+                    ox, oy = i * w + x * 2, y * 2
+                    set_px(combined, ox, oy, 2)      # common WHITE
+                    set_px(combined, ox + 1, oy, 2)
+                    set_px(combined, ox, oy + 1, 2)
+                    set_px(combined, ox + 1, oy + 1, 2)
+
+    return combined
+
+
 GENERATORS = {
     "player_ship.png": player_ship,
     "enemy_bee.png": enemy_bee,
@@ -828,6 +865,7 @@ GENERATORS = {
     "hud_fill.png": hud_fill,
     "hud_separator.png": hud_separator,
     "banner_font.png": banner_font,
+    "gameover_letters.png": gameover_letters,
 }
 
 def git_is_dirty(path):

@@ -100,6 +100,12 @@ TILESET hud_fill_tileset      "gfx/hud_fill.png"      BEST NONE
 // score.c). Drawn with PAL_PLAYER at runtime (index 9, see PLAYER_PAL).
 TILESET hud_separator_tileset "gfx/hud_separator.png" BEST NONE
 
+// Individual "GAME OVER" letters (see score.c's game-over letter-assembly
+// animation) -- 7 frames, one per unique letter needed (G,A,M,E,O,V,R; the
+// repeated E is reused, not duplicated -- see generate_placeholders.py's
+// gameover_letters()). Shares PAL_PLAYER's colors -- no PALETTE entry.
+SPRITE spr_gameover_letters "gfx/gameover_letters.png" 2 2 BEST
+
 // Drop-in replacement for SGDK's default font (font_default), with an
 // opaque black background baked into every glyph tile instead of a
 // transparent one -- loaded once via VDP_loadFont() (see main.c). opt=NONE
