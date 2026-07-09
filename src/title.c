@@ -1,5 +1,6 @@
 #include "title.h"
 #include "resources.h"
+#include "options.h"
 
 // Logo is 40x12 tiles (see generate_placeholders.py); centered horizontally,
 // sat in the upper half of the screen.
@@ -8,6 +9,9 @@
 
 #define PRESS_START_X 14
 #define PRESS_START_Y 20
+
+// A+START opens the options scene (see options.c) instead of starting the
+// game -- deliberately undocumented on screen, like a cheat code.
 
 // Credits line, bottom of the screen -- 38 chars, centered across the 40-tile-
 // wide screen with a 1-row margin above the bottom edge.
@@ -26,13 +30,25 @@
 // screens.
 #define TITLE_BASE_TILE (TILE_USER_INDEX + 64)
 
-void title_run(void)
+// Logo + prompts -- factored out of title_run() so it can be redrawn after
+// returning from the options scene (see options.c), which clears BG_A for
+// its own menu on the way in and never restores the logo on the way out.
+static void drawTitleScreen(void)
 {
     // BG_A isn't exclusively ours -- terrain.c leaves real (non-blank)
     // tilemap entries on it from the previous game, which drawing the logo
     // wouldn't otherwise overwrite outside its own footprint.
     VDP_clearPlane(BG_A, TRUE);
 
+    VDP_drawImageEx(BG_A, &title_image, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, TITLE_BASE_TILE),
+                     LOGO_TILE_X, LOGO_TILE_Y, TRUE, FALSE);
+
+    VDP_drawText("PRESS START", PRESS_START_X, PRESS_START_Y);
+    VDP_drawText(CREDITS_TEXT, CREDITS_X, CREDITS_Y);
+}
+
+void title_run(void)
+{
     // terrain_update() left BG_A's vertical scroll wherever the previous
     // game's terrain scrolled to; without resetting it, the logo/text are
     // still written at the correct *tile* coordinates but appear shifted
@@ -54,9 +70,6 @@ void title_run(void)
     // leftover HUD panel.
     VDP_setWindowHPos(FALSE, 0);
 
-    VDP_drawImageEx(BG_A, &title_image, TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, TITLE_BASE_TILE),
-                     LOGO_TILE_X, LOGO_TILE_Y, TRUE, FALSE);
-
     // Draw directly on BG_A rather than through the usual WINDOW text plane:
     // the WINDOW only actually shows where VDP_setWindowHPos/VPos say it
     // should (see main.c), and at title time neither has been configured to
@@ -64,8 +77,7 @@ void title_run(void)
     // here wouldn't be visible at all. BG_A isn't scrolling yet (that only
     // starts once gameplay begins), so drawing text on it directly is safe.
     VDP_setTextPlane(BG_A);
-    VDP_drawText("PRESS START", PRESS_START_X, PRESS_START_Y);
-    VDP_drawText(CREDITS_TEXT, CREDITS_X, CREDITS_Y);
+    drawTitleScreen();
 
     // Loaded once here and left running -- see main.c/sfx.c if in-game music
     // is added later, since sfx.c currently writes directly to the PSG from
@@ -82,8 +94,32 @@ void title_run(void)
     // straight through to fade-out and back into a new game).
     while (JOY_readJoypad(JOY_1) & BUTTON_START)
         SYS_doVBlankProcess();
-    while (!(JOY_readJoypad(JOY_1) & BUTTON_START))
+
+    // Wait for a fresh Start press -- if A is held at that moment, open the
+    // options scene instead of falling through to the fade-in-game below.
+    // options_run() takes over BG_A for its own menu and doesn't restore the
+    // logo on the way out, so it's redrawn here before resuming this wait
+    // (with the same release-first debounce, since A+START is still held
+    // going into that redraw).
+    while (TRUE)
+    {
         SYS_doVBlankProcess();
+        u16 joy = JOY_readJoypad(JOY_1);
+        if (!(joy & BUTTON_START))
+            continue;
+
+        if (joy & BUTTON_A)
+        {
+            options_run();
+            drawTitleScreen();
+            while (JOY_readJoypad(JOY_1) & BUTTON_START)
+                SYS_doVBlankProcess();
+        }
+        else
+        {
+            break;
+        }
+    }
 
     // Fade the music out over the same span as the screen's own fade-out
     // below -- XGM2_fadeOutAndStop() is driven by the Z80 in the background

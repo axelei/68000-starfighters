@@ -3,6 +3,7 @@
 #include "explosion.h"
 #include "sfx.h"
 #include "resources.h"
+#include "options.h"
 
 PlayerState player;
 
@@ -36,8 +37,9 @@ PlayerState player;
 #define SPREAD_ANGLE_VX  REGION_PICK(FIX16(1.0), FIX16(1.2))
 #define POWERUP_DURATION REGION_PICK(60 * 10, 50 * 10) // 10 seconds
 
-#define STARTING_LIVES     4
-#define MAX_LIVES          9 // see player_addLife() -- keeps the HUD's lives field a single digit
+// Default starting lives is now the options scene's LIVES setting (see
+// options.c) -- DEBUG_STARTING_LIVES, when nonzero, still overrides it.
+#define MAX_LIVES          15 // see player_addLife() -- headroom above OPTIONS_MAX_LIVES for lives earned mid-game
 #define DEATH_PAUSE_FRAMES REGION_PICK(60, 50)  // 1s before the next ship appears
 #define INVULN_DURATION    REGION_PICK(180, 150) // 3s of post-respawn invulnerability
 #define BLINK_INTERVAL     4   // frames per visibility toggle while invulnerable -- a
@@ -62,7 +64,7 @@ static void respawn(void)
 
 void player_init(void)
 {
-    player.lives = DEBUG_STARTING_LIVES > 0 ? DEBUG_STARTING_LIVES : STARTING_LIVES;
+    player.lives = DEBUG_STARTING_LIVES > 0 ? DEBUG_STARTING_LIVES : options_getStartingLives();
     // Low priority, like every other gameplay sprite (enemies/bullets/
     // turrets/explosions/powerups): terrain and starfield are both low
     // priority too, so this doesn't change how the ship layers against them

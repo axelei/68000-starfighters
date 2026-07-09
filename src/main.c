@@ -14,6 +14,7 @@
 #include "score.h"
 #include "sfx.h"
 #include "title.h"
+#include "options.h"
 
 int main(bool hardReset)
 {
@@ -45,6 +46,11 @@ int main(bool hardReset)
     // 40 columns (used for the full-screen game-over text).
 
     sfx_init();
+
+    // Once per power-on, not per game -- options chosen in the title
+    // screen's options scene (see options.c) should persist across replays,
+    // not reset back to defaults every time the do-while loop below restarts.
+    options_init();
 
     do
     {
@@ -170,6 +176,7 @@ int main(bool hardReset)
         explosions_hideAll();
         turrets_hideAll();
         boss_hideAll();
+        score_hideLivesIcons();
         SPR_update();
 
         VDP_clearTextArea(0, 0, 40, 28);

@@ -2,6 +2,7 @@
 #include "resources.h"
 #include "player.h"
 #include "formation.h"
+#include "options.h"
 #include <string.h>
 
 // HUD lives in a static side panel (right edge of the screen, out of the
@@ -20,10 +21,27 @@
 #define SCORE_HUD_Y 2
 #define LIVES_HUD_X (HUD_PANEL_COL0 + 1)
 #define LIVES_HUD_Y 6
+// LIVES' value area is taller than one row (see LIFE_ICON_MAX) -- WAVE/TIME
+// are pushed down from the old 10/14 to make room without crowding it.
 #define WAVE_HUD_X  (HUD_PANEL_COL0 + 1)
-#define WAVE_HUD_Y  10
+#define WAVE_HUD_Y  12
 #define TIME_HUD_X  (HUD_PANEL_COL0 + 1)
-#define TIME_HUD_Y  14
+#define TIME_HUD_Y  16
+
+// LIVES shows the ship *in reserve* (player.lives - 1 -- the one currently
+// in play doesn't count as a spare), and once that count is low enough to
+// fit, as that many little ship icons instead of a number -- reads at a
+// glance the way the arcade originals this is patterned after do. Laid out
+// as a 2x2 grid starting at LIVES_HUD_X (the same column the number would
+// use), not the panel's full width, so it never eats into the divider
+// column to its left.
+#define LIFE_ICON_MAX      4
+#define LIFE_ICON_COLS     2
+#define LIFE_ICON_ANIM     0 // matches player.c's ANIM_NEUTRAL (spr_player frame 0)
+#define LIFE_ICON_PX       16 // spr_player's frame size, both axes
+#define LIFE_ICON_TILE_ROWS 4 // 2 icon-rows, 16px/2 tile-rows tall each
+#define LIFE_ICON_X_PX(col) (LIVES_HUD_X * 8 + (col) * LIFE_ICON_PX)
+#define LIFE_ICON_Y_PX(row) ((LIVES_HUD_Y + 1) * 8 + (row) * LIFE_ICON_PX)
 
 // The WINDOW plane's vertical position can only band full rows from the top
 // or bottom edge -- never an arbitrary rectangle, and never a subset of rows
@@ -54,19 +72,24 @@
 // points only, no separate bonus/powerup (per the confirmed design).
 #define POINTS_BOSS 5000
 
-// Every EXTRA_LIFE_SCORE_INTERVAL points, the player is granted an extra
-// life (see player_addLife()) -- tracked via nextLifeScore rather than
-// score % EXTRA_LIFE_SCORE_INTERVAL so a single kill's points can cross more
-// than one interval at once (e.g. POINTS_BOSS landing right on a boundary)
-// without missing a life; see addScore().
-#define EXTRA_LIFE_SCORE_INTERVAL 50000
+// Every options_getExtraLifeInterval() points (see options.c's EXTRA LIFE
+// setting -- NONE/50000/100000), the player is granted an extra life (see
+// player_addLife()) -- tracked via nextLifeScore rather than
+// score % interval so a single kill's points can cross more than one
+// interval at once (e.g. POINTS_BOSS landing right on a boundary) without
+// missing a life; see addScore().
 
 static u32 score;
 static u32 nextLifeScore;
 static u32 displayedScore = 0xFFFFFFFF; // force first draw
-static u8 displayedLives = 0xFF;        // force first draw
+static u8 displayedLives = 0xFF;        // force first draw (see LIFE_ICON_MAX -- this is the displayed *reserve* count, not player.lives)
 static u16 displayedWave = 0xFFFF;      // force first draw
 static u16 displayedTime = 0xFFFF;      // force first draw
+
+// Reused across restarts (only ever created once -- see score_init()), same
+// as every other sprite pool in this game; just individually shown/hidden
+// rather than repositioned.
+static Sprite *lifeIcons[LIFE_ICON_MAX];
 
 // Paints a WINDOW-plane rectangle solid black using an opaque fill tile --
 // blank (index 0) tiles are transparent on Genesis hardware and would let
@@ -96,15 +119,29 @@ static void clearWindowRect(u16 x0, u16 y0, u16 x1, u16 y1)
     fillWindowRect(x0, y0, x1, y1);
 }
 
+// Blanks the LIVES row's whole value area (every tile row the icon grid
+// spans) -- starts at LIVES_HUD_X, same as the divider-column-avoiding icons
+// themselves, so the divider is never touched and never needs redrawing.
+// Used before switching between icon mode and number mode so neither leaves
+// stray tiles behind from the other.
+static void clearLivesValueArea(void)
+{
+    fillWindowRect(LIVES_HUD_X, LIVES_HUD_Y + 1, 40, LIVES_HUD_Y + 1 + LIFE_ICON_TILE_ROWS);
+}
+
 // Every point-awarding function funnels through here so the extra-life
 // threshold (EXTRA_LIFE_SCORE_INTERVAL) is checked in exactly one place.
 static void addScore(u32 points)
 {
     score += points;
 
+    u32 interval = options_getExtraLifeInterval();
+    if (interval == 0)
+        return; // NONE -- extra lives disabled (see options.c)
+
     while (score >= nextLifeScore)
     {
-        nextLifeScore += EXTRA_LIFE_SCORE_INTERVAL;
+        nextLifeScore += interval;
         player_addLife();
     }
 }
@@ -112,7 +149,7 @@ static void addScore(u32 points)
 void score_init(void)
 {
     score = 0;
-    nextLifeScore = EXTRA_LIFE_SCORE_INTERVAL;
+    nextLifeScore = options_getExtraLifeInterval();
     displayedScore = 0xFFFFFFFF;
     displayedLives = 0xFF;
     displayedWave = 0xFFFF;
@@ -142,6 +179,23 @@ void score_init(void)
     VDP_drawText("LIVES", LIVES_HUD_X, LIVES_HUD_Y);
     VDP_drawText("WAVE", WAVE_HUD_X, WAVE_HUD_Y);
     VDP_drawText("TIME", TIME_HUD_X, TIME_HUD_Y);
+
+    // High priority so they render above the panel's own high-priority
+    // black fill tiles (see fillWindowRect()) -- plain gameplay sprites like
+    // the player ship itself are deliberately LOW priority (see player.c)
+    // specifically to stay *below* that same fill, so these can't reuse that
+    // convention. Created once and reused across restarts, like every other
+    // sprite pool in this game; only ever shown/hidden, never repositioned.
+    for (u16 i = 0; i < LIFE_ICON_MAX; i++)
+    {
+        u16 col = i % LIFE_ICON_COLS;
+        u16 row = i / LIFE_ICON_COLS;
+        if (lifeIcons[i] == NULL)
+            lifeIcons[i] = SPR_addSprite(&spr_player, LIFE_ICON_X_PX(col), LIFE_ICON_Y_PX(row),
+                                          TILE_ATTR(PAL_PLAYER, TRUE, FALSE, FALSE));
+        SPR_setAnim(lifeIcons[i], LIFE_ICON_ANIM);
+        SPR_setVisibility(lifeIcons[i], HIDDEN);
+    }
 }
 
 void score_addKill(EnemyKind kind)
@@ -188,13 +242,28 @@ void score_hud_update(void)
         VDP_drawText(buf, SCORE_HUD_X, SCORE_HUD_Y + 1);
     }
 
-    if (player.lives != displayedLives)
+    // The ship currently in play isn't a "spare" -- shows how many are left
+    // *beyond* it, same as the arcade convention this is patterned after.
+    u8 reserveLives = (player.lives > 0) ? (u8) (player.lives - 1) : 0;
+    if (reserveLives != displayedLives)
     {
-        displayedLives = player.lives;
+        displayedLives = reserveLives;
+        clearLivesValueArea();
 
-        char buf[4];
-        uintToStr(displayedLives, buf, 1);
-        VDP_drawText(buf, LIVES_HUD_X, LIVES_HUD_Y + 1);
+        if (reserveLives <= LIFE_ICON_MAX)
+        {
+            for (u16 i = 0; i < LIFE_ICON_MAX; i++)
+                SPR_setVisibility(lifeIcons[i], i < reserveLives ? VISIBLE : HIDDEN);
+        }
+        else
+        {
+            for (u16 i = 0; i < LIFE_ICON_MAX; i++)
+                SPR_setVisibility(lifeIcons[i], HIDDEN);
+
+            char buf[4];
+            uintToStr(reserveLives, buf, 2);
+            VDP_drawText(buf, LIVES_HUD_X, LIVES_HUD_Y + 1);
+        }
     }
 
     // 1-indexed: the wave currently in play, not the (0-based) cleared
@@ -218,6 +287,18 @@ void score_hud_update(void)
         uintToStr(displayedTime, buf, 3);
         VDP_drawText(buf, TIME_HUD_X, TIME_HUD_Y + 1);
     }
+}
+
+// Hides the LIVES row's ship icons (see LIFE_ICON_MAX) without releasing
+// their sprite handles -- mirrors enemies_hideAll()/turrets_hideAll(), for
+// the same reason (called between rounds, see main.c): the tilemap-based
+// part of the HUD gets wiped by VDP_clearTextArea() there, but these are
+// independent VDP sprites, not tiles, and need their own hide call or
+// they'd hang frozen on screen through the next title screen.
+void score_hideLivesIcons(void)
+{
+    for (u16 i = 0; i < LIFE_ICON_MAX; i++)
+        SPR_setVisibility(lifeIcons[i], HIDDEN);
 }
 
 void score_showWaveAnnouncement(u16 waveNumber)

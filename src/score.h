@@ -17,6 +17,10 @@ void score_addBossKill(void);
 void score_hud_update(void);
 u32 score_getValue(void);
 
+// Hides the LIVES row's ship icons (see score.c's LIFE_ICON_MAX) -- call
+// between rounds alongside enemies_hideAll()/etc. (see main.c).
+void score_hideLivesIcons(void);
+
 // Shows/hides a "WAVE N" banner across the top of the screen (see
 // formation.c, which calls this when a new wave spawns).
 void score_showWaveAnnouncement(u16 waveNumber);
