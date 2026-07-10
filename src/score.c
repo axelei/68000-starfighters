@@ -383,9 +383,10 @@ void score_hud_update(void)
         }
     }
 
-    // 1-indexed: the wave currently in play, not the (0-based) cleared
-    // count -- reads naturally as "WAVE 1" from the very start of a game.
-    u16 waveNumber = formation_wavesCleared() + 1;
+    // The wave currently in play, not a count of cleared ones --
+    // wavesCleared()+1 would wrongly read "WAVE 1" when starting mid-game
+    // via DEBUG_START_WAVE (settings.h).
+    u16 waveNumber = formation_currentWave();
     if (waveNumber != displayedWave)
     {
         displayedWave = waveNumber;

@@ -17,6 +17,12 @@ void formation_update(void);
 // How many waves the player has fully cleared so far this game.
 u16 formation_wavesCleared(void);
 
+// 1-indexed wave slot currently in play -- unlike formation_wavesCleared()+1,
+// this reads correctly even when starting mid-game via DEBUG_START_WAVE
+// (settings.h), since it's the wave itself rather than a count of finished
+// ones.
+u16 formation_currentWave(void);
+
 // True once the first wave's enemies have actually been spawned (i.e. the
 // initial "WAVE 1" announcement has finished) -- see turret.c's trySpawn(),
 // which must not start placing ground turrets before then: with zero

@@ -40,7 +40,6 @@
 #define WAVE_TIME_LIMIT_FRAMES REGION_PICK(WAVE_TIME_LIMIT_SECONDS * 60, WAVE_TIME_LIMIT_SECONDS * 50)
 
 static u16 waveIndex;       // which WaveDef (mod WAVE_COUNT) is currently in play
-static u16 wavesCleared;
 static u16 clearDelayTimer;   // >0 while waiting to spawn the next wave
 static u16 announceTimer;     // >0 while the "WAVE N" banner is showing
 static bool waveSpawnPending;  // enemies for waveIndex haven't been spawned yet
@@ -167,14 +166,20 @@ static void startWave(u16 index)
     }
 
     waveSpawnPending = TRUE;
-    score_showWaveAnnouncement(index % WAVE_COUNT + 1);
+    // index+1, not index % WAVE_COUNT+1 -- the latter only cycles through
+    // the WAVE_COUNT (10) distinct WaveDefs the layouts repeat from,
+    // wrapping the banner back to "WAVE 1" every 10 slots even though the
+    // game keeps progressing. index itself is the wave we're actually in
+    // (not a count of how many are done), so it stays correct even when
+    // starting mid-game via DEBUG_START_WAVE (settings.h) -- wavesCleared
+    // would wrongly read 0 there.
+    score_showWaveAnnouncement(index + 1);
     announceTimer = WAVE_ANNOUNCE_FRAMES;
 }
 
 void formation_init(void)
 {
     waveIndex = DEBUG_START_WAVE;
-    wavesCleared = 0;
     clearDelayTimer = 0;
     announceTimer = 0;
     waveSpawnPending = FALSE;
@@ -259,7 +264,6 @@ void formation_update(void)
             // shrinks to 1 -- beginEncounter() re-checks the modulo either
             // way).
             inBossFight = FALSE;
-            wavesCleared++;
             waveIndex++;
             beginEncounter();
         }
@@ -282,14 +286,23 @@ void formation_update(void)
     }
     else if (enemies_countActive() == 0)
     {
-        wavesCleared++;
         clearDelayTimer = WAVE_CLEAR_DELAY;
     }
 }
 
+// How many waves the player has fully cleared so far -- since waveIndex only
+// advances once a wave slot is done (see formation_update() above), it *is*
+// that count in normal play (both start at 0). Only diverges from a true
+// "cleared" count under DEBUG_START_WAVE (settings.h), which skips ahead
+// without having actually cleared anything -- not a real gameplay case.
 u16 formation_wavesCleared(void)
 {
-    return wavesCleared;
+    return waveIndex;
+}
+
+u16 formation_currentWave(void)
+{
+    return waveIndex + 1;
 }
 
 bool formation_enemiesSpawned(void)
