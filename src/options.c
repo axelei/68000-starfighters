@@ -4,11 +4,11 @@
 #include "title.h"
 
 #define OPTIONS_DEFAULT_LIVES          4
-#define OPTIONS_DEFAULT_EXTRALIFE_INDEX 1 // index into extraLifeValues/Labels -- 50000
+#define OPTIONS_DEFAULT_EXTRALIFE_INDEX 2 // index into extraLifeValues/Labels -- 100000
 
-static const u32 extraLifeValues[3]        = {0,      50000,   100000};
-static const char *const extraLifeLabels[3] = {"NONE", "50000", "100000"};
-#define EXTRALIFE_OPTION_COUNT 3
+static const u32 extraLifeValues[4]        = {0,      50000,    100000,   200000};
+static const char *const extraLifeLabels[4] = {"NONE", "50000", "100000", "200000"};
+#define EXTRALIFE_OPTION_COUNT 4
 
 static u8 livesSetting;
 static u8 extraLifeIndex;

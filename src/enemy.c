@@ -92,14 +92,17 @@ static const fix16 smallDriftSpeedsY[SMALL_DRIFT_SPEED_COUNT] =
 #define WAVER_FORMATION_START_DELAY_FRAMES REGION_PICK(120, 100)
 
 // GRID_WEAVE horizontal anchor varies per batch (see
-// spawnNextGridWeaveSubgroup()) so successive batches don't always weave
-// through the exact same strip of the playfield -- picked at random from
-// these 3 positions each time a batch spawns. Kept within
-// PLAY_AREA_X_MIN/MAX with enough margin that even the widest path
-// amplitude (see interwave_generated.h) plus the grid's own column spread
-// can't push a member past the play area edge.
-#define WAVER_ANCHOR_OFFSET 30
-#define WAVER_ANCHOR_COUNT 3
+// spawnNextGridWeaveSubgroup()) so it can land anywhere across the visible
+// playfield instead of always weaving through the same strip -- picked at
+// random each time a batch spawns, from a range kept within PLAY_AREA_X_MIN/
+// MAX with enough margin that even the widest path amplitude (see
+// interwave_generated.h -- 26px is generate_interwave.py's PATHS' largest)
+// plus the grid's own column spread (gridOffset() at its widest, i.e. the
+// outer columns) can't push a member past the play area edge, even if both
+// extremes land on the same frame.
+#define WAVER_MAX_PATH_AMPLITUDE 26
+#define WAVER_GRID_HALF_SPREAD   (((WAVER_GRID_COLS - 1) * WAVER_COL_SPACING) / 2)
+#define WAVER_ANCHOR_MARGIN      (WAVER_MAX_PATH_AMPLITUDE + WAVER_GRID_HALF_SPREAD)
 
 // Per-row offset into the shared path clock (see waverRowPhase in enemy.h)
 // -- each row samples waverPaths this many frames "ahead" of the row above
@@ -158,6 +161,12 @@ static u16 currentWaverClock;
 // each time a batch spawns, independent of ENEMY_KIND_WAVER_A/B/C (which only
 // pick the sprite/color, not the movement).
 static u8 currentWaverPathId;
+
+// GRID_WEAVE horizontal anchor for the current batch (see
+// spawnNextGridWeaveSubgroup()) -- every WAVING member's per-frame position
+// is centered on this, same "only one batch alive" reasoning as
+// currentWaverClock/currentWaverPathId above.
+static s16 currentWaverAnchorX;
 
 // Which formation shape the current/most-recent inter-wave formation is
 // using (see WaverShape in enemy.h) -- alternated each time
@@ -255,6 +264,7 @@ void enemies_init(void)
 
     currentWaverClock = 0;
     currentWaverPathId = 0;
+    currentWaverAnchorX = (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2;
     currentWaverShape = WAVER_SHAPE_GRID_WEAVE;
     interwaveFormationCount = 0;
     waverBatchesSpawned = 0;
@@ -696,9 +706,8 @@ void enemies_update(void)
                 // below 0 as well as exceed the table length -- both
                 // clamped inside waverPathAt().
                 s16 clock = (s16) currentWaverClock + e->waverRowPhase;
-                s16 anchorX = (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2;
 
-                e->x = FIX16(anchorX + waverPathAt(currentWaverPathId, clock) + e->groupOffsetX);
+                e->x = FIX16(currentWaverAnchorX + waverPathAt(currentWaverPathId, clock) + e->groupOffsetX);
                 e->y += WAVER_DESCEND_SPEED;
             }
 
@@ -776,12 +785,10 @@ static s16 gridOffset(u16 index, u16 count, s16 spacing)
 // view.
 static void spawnNextGridWeaveSubgroup(void)
 {
-    static const s16 waverAnchorX[WAVER_ANCHOR_COUNT] = {
-        (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2 - WAVER_ANCHOR_OFFSET,
-        (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2,
-        (PLAY_AREA_X_MIN + PLAY_AREA_X_MAX) / 2 + WAVER_ANCHOR_OFFSET,
-    };
-    s16 anchorX = waverAnchorX[random() % WAVER_ANCHOR_COUNT];
+    s16 anchorMin = PLAY_AREA_X_MIN + WAVER_ANCHOR_MARGIN;
+    s16 anchorMax = PLAY_AREA_X_MAX - WAVER_ANCHOR_MARGIN;
+    s16 anchorX = anchorMin + (s16) (random() % (u16) (anchorMax - anchorMin + 1));
+    currentWaverAnchorX = anchorX;
     s16 h = (s16) enemy_heightForKind(waverFormationKind);
 
     currentWaverClock = 0;
