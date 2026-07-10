@@ -5,6 +5,12 @@
 #include "enemy.h"
 
 void score_init(void);
+
+// Nulls every cached sprite handle (LIVES icons, "GAME OVER" letters) --
+// boot-time only (see main.c and bullet.h's bullets_resetHandles(), same
+// reasoning); not part of the restart-safe score_init() above.
+void score_resetHandles(void);
+
 void score_addKill(EnemyKind kind);
 void score_addTurretKill(void);
 

@@ -88,6 +88,16 @@ void bullets_init(void)
     pool_init(enemyBullets, MAX_ENEMY_BULLETS);
 }
 
+// See bullet.h -- boot-time only, not part of the restart-safe bullets_init()
+// above.
+void bullets_resetHandles(void)
+{
+    for (u16 i = 0; i < MAX_PLAYER_BULLETS; i++)
+        playerBullets[i].sprite = NULL;
+    for (u16 i = 0; i < MAX_ENEMY_BULLETS; i++)
+        enemyBullets[i].sprite = NULL;
+}
+
 static Bullet *spawn(Bullet *pool, u16 count, const SpriteDefinition *def, u16 pal, u16 vramTile,
                       fix16 x, fix16 y, fix16 vx, fix16 vy)
 {

@@ -8,8 +8,9 @@
 
 // Resets every setting to its default -- call once at boot (not from the
 // title/game restart loop in main.c), so choices made in one game persist
-// into the next within the same power-on session, same as high scores would
-// if this game tracked one.
+// into the next within the same power-on session. Unlike the high score/wave
+// records (see highscore.h), these settings are never saved to SRAM -- they
+// reset to default on every power-on.
 void options_init(void);
 
 // Starting lives for a new game (see player_init()) -- OPTIONS_MIN_LIVES to

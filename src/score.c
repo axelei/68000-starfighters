@@ -3,6 +3,7 @@
 #include "player.h"
 #include "formation.h"
 #include "options.h"
+#include "highscore.h"
 #include <string.h>
 
 // HUD lives in a static side panel (right edge of the screen, out of the
@@ -28,6 +29,16 @@
 #define TIME_HUD_X  (HUD_PANEL_COL0 + 1)
 #define TIME_HUD_Y  16
 
+// Persisted records (see highscore.c) -- shown lower in the same panel,
+// below TIME with the same one-row-label/one-row-value shape as SCORE.
+// "HISCORE" (7 chars) is the widest label that still fits the panel's 7
+// usable columns (HUD_PANEL_COLS(8) minus the divider column) without
+// running into the screen edge -- see HUD_PANEL_COL0.
+#define HISCORE_HUD_X (HUD_PANEL_COL0 + 1)
+#define HISCORE_HUD_Y 20
+#define HIWAVE_HUD_X  (HUD_PANEL_COL0 + 1)
+#define HIWAVE_HUD_Y  23
+
 // LIVES shows the ship *in reserve* (player.lives - 1 -- the one currently
 // in play doesn't count as a spare), and once that count is low enough to
 // fit, as that many little ship icons instead of a number -- reads at a
@@ -50,7 +61,17 @@
 // exactly equals the rows that actually have text on them, with nothing
 // above or below it hidden unnecessarily.
 #define GAMEOVER_HUD_Y 0
-#define GAMEOVER_BAND_ROWS 5 // rows 0..4 -- "GAME OVER" itself is the sprite-letter animation below, not drawn here
+#define GAMEOVER_BAND_ROWS 7 // rows 0..6 -- "GAME OVER" itself is the sprite-letter animation below, not drawn here
+
+// Record-beaten rows -- always reserved (blank if not applicable) rather
+// than conditionally resizing the band, so PRESS START always lands on the
+// same row regardless of whether either record fell this round. Blinked by
+// recordBlinkStep(), driven from score_hud_update() same as the rest of the
+// game-over screen.
+#define GAMEOVER_RECORD_SCORE_ROW (GAMEOVER_HUD_Y + 4)
+#define GAMEOVER_RECORD_WAVE_ROW  (GAMEOVER_HUD_Y + 5)
+#define GAMEOVER_PRESS_START_ROW  (GAMEOVER_HUD_Y + 6)
+#define GAMEOVER_RECORD_BLINK_FRAMES REGION_PICK(8, 7) // quick blink, ~0.13s per phase
 
 // "GAME OVER" assembles centered in the playfield (not the whole screen --
 // PLAY_AREA_X/Y_MIN/MAX exclude the HUD side panel, see game.h) from 8
@@ -172,6 +193,16 @@ static bool gameoverAnimActive;
 static u16 gameoverAnimTimer; // counts up from 0 to GAMEOVER_ANIM_FRAMES while active
 static void gameoverAnimStep(void); // defined below, used by score_hud_update()
 
+// Set once at score_showGameOver() time (see highscore_checkAndUpdate()
+// there) and left alone for the rest of the game-over screen -- recordBlinkOn
+// is the only part that keeps changing, toggled every GAMEOVER_RECORD_BLINK_
+// FRAMES by recordBlinkStep() to blink whichever line(s) apply.
+static bool recordScoreActive;
+static bool recordWaveActive;
+static bool recordBlinkOn;
+static u16 recordBlinkTimer;
+static void recordBlinkStep(void); // defined below, used by score_hud_update()
+
 // Paints a WINDOW-plane rectangle solid black using an opaque fill tile --
 // blank (index 0) tiles are transparent on Genesis hardware and would let
 // the scrolling terrain/starfield (and any sprite passing behind) show
@@ -227,6 +258,28 @@ static void addScore(u32 points)
     }
 }
 
+// Redraws both persisted-record values -- called once at score_init() (to
+// show whatever was already saved coming into this round) and again right
+// after a new record is set at game over (see score_showGameOver()), so it
+// reflects the just-beaten record immediately rather than only on the next
+// restart.
+static void drawHighScoreHudValues(void)
+{
+    char buf[8];
+    uintToStr(highscore_getScore(), buf, 6);
+    VDP_drawText(buf, HISCORE_HUD_X, HISCORE_HUD_Y + 1);
+    uintToStr(highscore_getWave(), buf, 2);
+    VDP_drawText(buf, HIWAVE_HUD_X, HIWAVE_HUD_Y + 1);
+}
+
+void score_resetHandles(void)
+{
+    for (u16 i = 0; i < LIFE_ICON_MAX; i++)
+        lifeIcons[i] = NULL;
+    for (u16 i = 0; i < GAMEOVER_LETTER_COUNT; i++)
+        gameoverLetters[i].sprite = NULL;
+}
+
 void score_init(void)
 {
     score = 0;
@@ -260,6 +313,9 @@ void score_init(void)
     VDP_drawText("LIVES", LIVES_HUD_X, LIVES_HUD_Y);
     VDP_drawText("WAVE", WAVE_HUD_X, WAVE_HUD_Y);
     VDP_drawText("TIME", TIME_HUD_X, TIME_HUD_Y);
+    VDP_drawText("HISCORE", HISCORE_HUD_X, HISCORE_HUD_Y);
+    VDP_drawText("HIWAVE", HIWAVE_HUD_X, HIWAVE_HUD_Y);
+    drawHighScoreHudValues();
 
     // High priority so they render above the panel's own high-priority
     // black fill tiles (see fillWindowRect()) -- plain gameplay sprites like
@@ -284,6 +340,8 @@ void score_init(void)
     // once and reused across restarts; positions/angles are fixed layout,
     // computed once here rather than every time the animation starts.
     gameoverAnimActive = FALSE;
+    recordScoreActive = FALSE;
+    recordWaveActive = FALSE;
     s16 totalWidth = GAMEOVER_LETTER_COUNT * GAMEOVER_LETTER_W + GAMEOVER_WORD_GAP;
     s16 startX = GAMEOVER_PLAYFIELD_CENTER_X - totalWidth / 2;
     for (u16 i = 0; i < GAMEOVER_LETTER_COUNT; i++)
@@ -407,6 +465,7 @@ void score_hud_update(void)
     }
 
     gameoverAnimStep();
+    recordBlinkStep();
 }
 
 // Hides the LIVES row's ship icons (see LIFE_ICON_MAX) and the "GAME OVER"
@@ -424,6 +483,12 @@ void score_hideLivesIcons(void)
     gameoverAnimActive = FALSE;
     for (u16 i = 0; i < GAMEOVER_LETTER_COUNT; i++)
         SPR_setVisibility(gameoverLetters[i].sprite, HIDDEN);
+
+    // Stop the record blink loop too -- the WINDOW plane's game-over band
+    // is about to be wiped by VDP_clearTextArea() in main.c either way, but
+    // this keeps recordBlinkStep() from redrawing into it in the meantime.
+    recordScoreActive = FALSE;
+    recordWaveActive = FALSE;
 }
 
 // Spirals every "GAME OVER" letter in from its own point on a circle
@@ -476,6 +541,41 @@ static void gameoverAnimStep(void)
         gameoverAnimActive = FALSE;
         for (u16 i = 0; i < GAMEOVER_LETTER_COUNT; i++)
             SPR_setPosition(gameoverLetters[i].sprite, gameoverLetters[i].finalX, gameoverLetters[i].finalY);
+    }
+}
+
+// Blinks "NEW HIGH SCORE!"/"NEW HIGH WAVE!" (whichever apply this round) at
+// a quick, fixed rate -- toggling the whole line between drawn and blanked
+// every GAMEOVER_RECORD_BLINK_FRAMES, same on/off shape as the PAUSE
+// decorations' marching dash, just alternating the full line instead of
+// sliding a character along it. A no-op once neither record was beaten (see
+// score_showGameOver()/score_init()/score_hideLivesIcons()).
+static void recordBlinkStep(void)
+{
+    if (!recordScoreActive && !recordWaveActive)
+        return;
+
+    if (recordBlinkTimer > 0)
+    {
+        recordBlinkTimer--;
+        return;
+    }
+    recordBlinkTimer = GAMEOVER_RECORD_BLINK_FRAMES;
+    recordBlinkOn = !recordBlinkOn;
+
+    if (recordScoreActive)
+    {
+        if (recordBlinkOn)
+            VDP_drawText("NEW HIGH SCORE!", 8, GAMEOVER_RECORD_SCORE_ROW);
+        else
+            clearWindowRect(0, GAMEOVER_RECORD_SCORE_ROW, HUD_PANEL_COL0, GAMEOVER_RECORD_SCORE_ROW + 1);
+    }
+    if (recordWaveActive)
+    {
+        if (recordBlinkOn)
+            VDP_drawText("NEW HIGH WAVE!", 9, GAMEOVER_RECORD_WAVE_ROW);
+        else
+            clearWindowRect(0, GAMEOVER_RECORD_WAVE_ROW, HUD_PANEL_COL0, GAMEOVER_RECORD_WAVE_ROW + 1);
     }
 }
 
@@ -558,7 +658,26 @@ void score_showGameOver(void)
     VDP_drawText("WAVES CLEARED", 11, GAMEOVER_HUD_Y + 2);
     uintToStr(formation_wavesCleared(), buf, 2);
     VDP_drawText(buf, 17, GAMEOVER_HUD_Y + 3);
-    VDP_drawText("PRESS START", 12, GAMEOVER_HUD_Y + 4);
+    VDP_drawText("PRESS START", 12, GAMEOVER_PRESS_START_ROW);
+
+    // Checked (and, if beaten, persisted to SRAM) right here rather than
+    // earlier at the moment lives ran out -- formation_currentWave() is
+    // still the wave the player was actually on when the game ended, and
+    // this is the one place both final values are settled and available.
+    // score_hud_update()'s HISCORE/HIWAVE panel readout is refreshed
+    // immediately too, rather than waiting for the next round's score_init(),
+    // so a beaten record shows up-to-date right away.
+    HighScoreResult hs = highscore_checkAndUpdate(score, formation_currentWave());
+    recordScoreActive = hs.newHighScore;
+    recordWaveActive = hs.newHighWave;
+    recordBlinkOn = TRUE;
+    recordBlinkTimer = GAMEOVER_RECORD_BLINK_FRAMES;
+    if (recordScoreActive)
+        VDP_drawText("NEW HIGH SCORE!", 8, GAMEOVER_RECORD_SCORE_ROW);
+    if (recordWaveActive)
+        VDP_drawText("NEW HIGH WAVE!", 9, GAMEOVER_RECORD_WAVE_ROW);
+    if (recordScoreActive || recordWaveActive)
+        drawHighScoreHudValues();
 
     gameoverAnimActive = TRUE;
     gameoverAnimTimer = 0;

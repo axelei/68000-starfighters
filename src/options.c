@@ -2,6 +2,7 @@
 #include "resources.h"
 #include "sfx.h"
 #include "title.h"
+#include "highscore.h"
 
 #define OPTIONS_DEFAULT_LIVES          4
 #define OPTIONS_DEFAULT_EXTRALIFE_INDEX 2 // index into extraLifeValues/Labels -- 100000
@@ -77,15 +78,17 @@ u32 options_getExtraLifeInterval(void)
 #define ROW_LIVES_Y      10
 #define ROW_EXTRALIFE_Y  13
 #define ROW_SOUNDTEST_Y  16
-#define ROW_BACK_Y       19
-#define HINT1_Y 22
-#define HINT2_Y 24
+#define ROW_RESETSCORES_Y 19
+#define ROW_BACK_Y       22
+#define HINT1_Y 24
+#define HINT2_Y 26
 
 typedef enum
 {
     OPT_ROW_LIVES,
     OPT_ROW_EXTRALIFE,
     OPT_ROW_SOUNDTEST,
+    OPT_ROW_RESETSCORES,
     OPT_ROW_BACK,
     OPT_ROW_COUNT,
 } OptionsRow;
@@ -94,10 +97,11 @@ static u16 rowY(OptionsRow row)
 {
     switch (row)
     {
-        case OPT_ROW_LIVES:      return ROW_LIVES_Y;
-        case OPT_ROW_EXTRALIFE:  return ROW_EXTRALIFE_Y;
-        case OPT_ROW_SOUNDTEST:  return ROW_SOUNDTEST_Y;
-        default:                 return ROW_BACK_Y;
+        case OPT_ROW_LIVES:        return ROW_LIVES_Y;
+        case OPT_ROW_EXTRALIFE:    return ROW_EXTRALIFE_Y;
+        case OPT_ROW_SOUNDTEST:    return ROW_SOUNDTEST_Y;
+        case OPT_ROW_RESETSCORES:  return ROW_RESETSCORES_Y;
+        default:                   return ROW_BACK_Y;
     }
 }
 
@@ -121,6 +125,25 @@ static void drawExtraLifeValue(void)
     VDP_drawTextFill(extraLifeLabels[extraLifeIndex], MENU_VALUE_X, ROW_EXTRALIFE_Y, MENU_VALUE_LEN);
 }
 
+// Brief blocking confirmation flash, not a persisted value like the rows
+// above -- this row is a one-shot action, not a setting. RESET_CONFIRM_
+// FRAMES-long busy-wait mirrors soundTest_run()'s own blocking debounce
+// loops elsewhere in this file; nothing else needs to keep running under it.
+#define RESET_CONFIRM_FRAMES REGION_PICK(50, 42) // ~0.8s
+
+static void performResetScores(void)
+{
+    highscore_reset();
+
+    VDP_drawTextFill("DONE!", MENU_VALUE_X, ROW_RESETSCORES_Y, MENU_VALUE_LEN);
+    for (u16 i = 0; i < RESET_CONFIRM_FRAMES; i++)
+    {
+        sfx_update();
+        SYS_doVBlankProcess();
+    }
+    VDP_drawTextFill("", MENU_VALUE_X, ROW_RESETSCORES_Y, MENU_VALUE_LEN);
+}
+
 // Drawn once per entry into this scene, not per keypress: VDP_clearPlane()
 // is a full 64x64-tile DMA clear, and re-running it (plus every label) on
 // every single UP/DOWN/LEFT/RIGHT made the whole menu visibly flash each
@@ -135,6 +158,7 @@ static void drawMainMenuStatic(void)
     VDP_drawText("LIVES", MENU_X, ROW_LIVES_Y);
     VDP_drawText("EXTRA LIFE EVERY", MENU_X, ROW_EXTRALIFE_Y);
     VDP_drawText("SOUND TEST", MENU_X, ROW_SOUNDTEST_Y);
+    VDP_drawText("RESET RECORDS", MENU_X, ROW_RESETSCORES_Y);
     VDP_drawText("BACK", MENU_X, ROW_BACK_Y);
 
     drawLivesValue();
@@ -341,6 +365,10 @@ void options_run(void)
                 // when this scene is first entered.
                 drawMainMenuStatic();
                 drawMenuCursor(selectedRow, TRUE);
+            }
+            else if (selectedRow == OPT_ROW_RESETSCORES)
+            {
+                performResetScores();
             }
             else if (selectedRow == OPT_ROW_BACK)
             {

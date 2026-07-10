@@ -35,6 +35,12 @@ typedef struct
 extern PlayerState player;
 
 void player_init(void);
+
+// Nulls the cached sprite handle -- boot-time only (see main.c and
+// bullet.h's bullets_resetHandles(), same reasoning); not part of the
+// restart-safe player_init() above.
+void player_resetHandles(void);
+
 void player_update(u16 joyState);
 void player_applyPowerup(PowerupType type);
 AABB player_getBounds(void);

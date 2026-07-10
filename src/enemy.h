@@ -106,6 +106,11 @@ extern Enemy enemies[MAX_ENEMIES];
 void enemies_init(void);
 void enemies_update(void);
 
+// Nulls every cached sprite handle -- boot-time only (see main.c and
+// bullet.h's bullets_resetHandles(), same reasoning); not part of the
+// restart-safe enemies_init() above.
+void enemies_resetHandles(void);
+
 // Number of active BEE/SPECIAL ("small") enemies -- turrets (see turret.c)
 // only spawn once this reaches 0.
 u16 enemies_countSmall(void);

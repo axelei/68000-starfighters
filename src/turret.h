@@ -31,6 +31,13 @@ extern Turret turrets[MAX_TURRETS];
 void turrets_init(void);
 void turrets_update(void);
 
+// Nulls every cached sprite handle -- boot-time only (see main.c and
+// bullet.h's bullets_resetHandles(), same reasoning); not part of the
+// restart-safe turrets_init() above, and a different case from
+// turrets_releaseIdleSprites() below (which reclaims hardware sprite slots
+// mid-session, not after a reset).
+void turrets_resetHandles(void);
+
 // Hides and deactivates every active turret without releasing its sprite
 // (called on player death, so a turret doesn't hang frozen on screen
 // through the game-over prompt).

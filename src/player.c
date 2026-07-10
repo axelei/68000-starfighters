@@ -79,6 +79,11 @@ void player_init(void)
     respawn();
 }
 
+void player_resetHandles(void)
+{
+    player.sprite = NULL;
+}
+
 static void clampToPlayArea(void)
 {
     if (player.x < FIX16(PLAY_AREA_X_MIN)) player.x = FIX16(PLAY_AREA_X_MIN);

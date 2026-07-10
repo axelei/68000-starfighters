@@ -55,6 +55,12 @@ void explosions_init(void)
     }
 }
 
+void explosions_resetHandles(void)
+{
+    for (u16 i = 0; i < MAX_EXPLOSIONS; i++)
+        explosions[i].sprite = NULL;
+}
+
 void explosion_spawnAtDelayed(s16 centerX, s16 centerY, u16 delay)
 {
     for (u16 i = 0; i < MAX_EXPLOSIONS; i++)

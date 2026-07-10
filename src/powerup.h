@@ -18,6 +18,11 @@ extern Powerup powerups[MAX_POWERUPS];
 void powerups_init(void);
 void powerups_update(void);
 
+// Nulls every cached sprite handle -- boot-time only (see main.c and
+// bullet.h's bullets_resetHandles(), same reasoning); not part of the
+// restart-safe powerups_init() above.
+void powerups_resetHandles(void);
+
 // Hides and deactivates every active powerup without releasing its sprite
 // (called on player death, so drifting capsules don't hang frozen on screen
 // through the game-over prompt).

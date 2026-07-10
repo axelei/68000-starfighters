@@ -274,6 +274,12 @@ void enemies_init(void)
     waverKillCount = 0;
 }
 
+void enemies_resetHandles(void)
+{
+    for (u16 i = 0; i < MAX_ENEMIES; i++)
+        enemies[i].sprite = NULL;
+}
+
 u16 enemies_countSmall(void)
 {
     u16 count = 0;

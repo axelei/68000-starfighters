@@ -8,6 +8,11 @@
 void explosions_init(void);
 void explosions_update(void);
 
+// Nulls every cached sprite handle -- boot-time only (see main.c and
+// bullet.h's bullets_resetHandles(), same reasoning); not part of the
+// restart-safe explosions_init() above.
+void explosions_resetHandles(void);
+
 // Hides and deactivates every active explosion without releasing its sprite
 // (called on final player death, so a mid-animation burst doesn't hang
 // frozen on screen through the game-over prompt).

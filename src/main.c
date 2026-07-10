@@ -12,6 +12,7 @@
 #include "boss.h"
 #include "collision.h"
 #include "score.h"
+#include "highscore.h"
 #include "sfx.h"
 #include "title.h"
 #include "options.h"
@@ -21,6 +22,31 @@ int main(bool hardReset)
     VDP_setScreenWidth320();
     SPR_init();
     JOY_init();
+
+    // Every module below caches its Sprite* handles in static/global vars
+    // and reuses them forever across the title/game restart do-while loop
+    // (each one's own _init() intentionally leaves them alone -- see e.g.
+    // bullet.c's pool_init()). That's safe *within* a single call to main():
+    // SPR_init() above only ever runs once before any of those handles are
+    // created. But a soft reset (the console's Reset button, not just a
+    // fresh game) re-enters main() and re-runs SPR_init() -- which allocates
+    // a brand new sprite pool -- while leaving ordinary work RAM (where
+    // these static handles live) untouched, unlike VRAM/the VDP. Without
+    // this, every cached handle from before the reset is left dangling, and
+    // the first restart's "already have a sprite, just reuse it" checks
+    // would hand stale pointers straight to the sprite engine -- the
+    // intermittent post-reset crashes this fixes. Nulling them here, once,
+    // right after SPR_init() and before anything can create a real one,
+    // makes every one of those checks correctly take the "create fresh"
+    // path exactly once per actual reset (hard or soft), same as if this
+    // were truly the first time any of them had ever run.
+    bullets_resetHandles();
+    enemies_resetHandles();
+    explosions_resetHandles();
+    powerups_resetHandles();
+    turrets_resetHandles();
+    score_resetHandles();
+    player_resetHandles();
 
     // Covers the very first title screen's "PRESS START" (see title_run()),
     // drawn before terrain_init() has run even once this session. Every
@@ -51,6 +77,11 @@ int main(bool hardReset)
     // screen's options scene (see options.c) should persist across replays,
     // not reset back to defaults every time the do-while loop below restarts.
     options_init();
+
+    // Also once per power-on: loads the saved high score/wave from SRAM (or
+    // initializes it, if this cart/emulator has never written it before)
+    // so it's ready before the first game over ever checks against it.
+    highscore_init();
 
     do
     {

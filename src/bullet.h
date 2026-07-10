@@ -24,6 +24,15 @@ extern Bullet enemyBullets[MAX_ENEMY_BULLETS];
 void bullets_init(void);
 void bullets_update(void);
 
+// Nulls every cached sprite handle in both pools -- call once at boot (see
+// main.c), right after SPR_init() and before the title/game restart loop's
+// bullets_init() calls start reusing them. SPR_init() invalidates any
+// handle that was still around from before a soft reset: a reset doesn't
+// clear regular work RAM (only the VDP/VRAM), so without this a soft
+// reset's first restart would reuse a now-dangling Sprite* left over from
+// before it.
+void bullets_resetHandles(void);
+
 // Hides and deactivates every active bullet without releasing its sprite
 // (called on player death, so leftover shots don't hang frozen on screen
 // through the game-over prompt).

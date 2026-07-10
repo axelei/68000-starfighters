@@ -94,6 +94,12 @@ void turrets_init(void)
     spawnCooldown = randomCooldown(SPAWN_CHECK_COOLDOWN_MIN, SPAWN_CHECK_COOLDOWN_RANGE);
 }
 
+void turrets_resetHandles(void)
+{
+    for (u16 i = 0; i < MAX_TURRETS; i++)
+        turrets[i].sprite = NULL;
+}
+
 static u16 countActive(void)
 {
     u16 count = 0;

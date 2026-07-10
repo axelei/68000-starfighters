@@ -16,6 +16,12 @@ void powerups_init(void)
     }
 }
 
+void powerups_resetHandles(void)
+{
+    for (u16 i = 0; i < MAX_POWERUPS; i++)
+        powerups[i].sprite = NULL;
+}
+
 void powerup_spawnAt(s16 x, s16 y)
 {
     for (u16 i = 0; i < MAX_POWERUPS; i++)
