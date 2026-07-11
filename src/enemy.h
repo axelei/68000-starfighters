@@ -182,6 +182,14 @@ Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY,
 
 AABB enemy_getBounds(const Enemy *e);
 
+// True if (worldX,worldY) lands on a solid (non-transparent) pixel of e's
+// sprite -- always TRUE for kinds other than ENEMY_KIND_BIG (see enemy.c),
+// so callers can call this unconditionally after an AABB overlap without
+// special-casing kind themselves. Meant to refine an already-passed
+// aabb_overlaps() check, not replace it -- points outside the AABB aren't
+// meaningfully "inside" just because they'd read FALSE.
+bool enemy_hitTestPixel(const Enemy *e, s16 worldX, s16 worldY);
+
 // Applies damage to the enemy, flashing it white for a few frames; kills it
 // (see enemy_kill) once hp reaches 0. Called by the collision system.
 void enemy_hit(Enemy *e, s16 damage);

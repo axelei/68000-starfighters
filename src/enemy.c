@@ -7,6 +7,7 @@
 #include "explosion.h"
 #include "sfx.h"
 #include "interwave_generated.h"
+#include "enemy_big_mask_generated.h"
 
 Enemy enemies[MAX_ENEMIES];
 
@@ -508,6 +509,27 @@ AABB enemy_getBounds(const Enemy *e)
 {
     AABB box = {F16_toInt(e->x), F16_toInt(e->y), enemy_widthForKind(e->kind), enemy_heightForKind(e->kind)};
     return box;
+}
+
+// Only ENEMY_KIND_BIG carries a pixel mask (enemy_big_mask_generated.h,
+// derived from enemy_big.png by res/gfx/generate_hitmasks.py) -- its 32x32
+// AABB has large genuinely-transparent regions (the "capital ship"
+// silhouette), unlike BEE/SPECIAL/waver kinds whose AABB already hugs their
+// art closely enough that a mask wouldn't change the outcome. Every other
+// kind (and any (worldX,worldY) outside the AABB) is treated as solid --
+// callers are expected to have already passed an aabb_overlaps() check, so
+// this only ever refines a hit, never expands one.
+bool enemy_hitTestPixel(const Enemy *e, s16 worldX, s16 worldY)
+{
+    if (e->kind != ENEMY_KIND_BIG)
+        return TRUE;
+
+    s16 localX = worldX - F16_toInt(e->x);
+    s16 localY = worldY - F16_toInt(e->y);
+    if (localX < 0 || localX >= ENEMY_BIG_MASK_SIZE || localY < 0 || localY >= ENEMY_BIG_MASK_SIZE)
+        return FALSE;
+
+    return (enemyBigMask[localY] >> localX) & 1;
 }
 
 // Ticks the current batch's shared path clock once per frame -- the

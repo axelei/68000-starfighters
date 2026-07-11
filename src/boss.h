@@ -51,10 +51,22 @@ bool boss_isActive(void);
 // prompt) -- mirrors enemies_hideAll()/turrets_hideAll().
 void boss_hideAll(void);
 
-// Broad bounding box covering the body plus every weak-spot pod, used for
-// the player-ram-death check (see collision.c) -- the boss never dies from
-// ramming, unlike BEE/SPECIAL/waver kinds.
+// Broad bounding box covering the body plus every weak-spot pod, used as a
+// cheap first-pass filter for the player-ram-death check (see collision.c
+// and boss_hitTestPixel()) -- the boss never dies from ramming, unlike
+// BEE/SPECIAL/waver kinds.
 AABB boss_getBounds(void);
+
+// Refines the player-ram-death check against the boss's actual silhouette --
+// the current kind's body mask (see boss_mask_generated.h, derived from
+// boss_body_*.png's irregular hulls: diamond/saucer/round/spike/wing) plus
+// any still-alive weak-spot pod's plain AABB (pods stay unmasked -- close
+// enough to their round art that a mask wouldn't change the outcome, and
+// they're also what boss_getBounds() spills past the body's own 64x64 box
+// for). Expects worldX/worldY to already have passed an
+// aabb_overlaps(pbox, boss_getBounds()) check -- points outside that area
+// aren't meaningfully "on the boss" just because this reads FALSE for them.
+bool boss_hitTestPixel(s16 worldX, s16 worldY);
 
 // Number of weak spots (1-3) the currently-active kind has -- collision.c
 // uses this as its loop bound instead of a hardcoded count, since it

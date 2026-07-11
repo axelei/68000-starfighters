@@ -51,6 +51,16 @@ static void resolvePlayerBulletsVsEnemies(void)
 
             if (aabb_overlaps(bbox, enemyBoxes[ei]))
             {
+                // Sample the bullet's center pixel against the enemy's mask
+                // (see enemy_hitTestPixel()) rather than every pixel the
+                // bullet's box covers -- BULLET_SPR_W/H is only 8px, so a
+                // single sample is close enough and keeps this a single
+                // shift+mask on top of the AABB check.
+                s16 sampleX = bbox.x + bbox.w / 2;
+                s16 sampleY = bbox.y + bbox.h / 2;
+                if (!enemy_hitTestPixel(&enemies[ei], sampleX, sampleY))
+                    continue;
+
                 enemy_hit(&enemies[ei], BULLET_DAMAGE);
                 hit = TRUE;
                 break;
@@ -106,7 +116,8 @@ static void resolveEnemyThreatsVsPlayer(void)
         if (!e->active || e->startDelay > 0)
             continue;
 
-        if (aabb_overlaps(pbox, enemy_getBounds(e)))
+        if (aabb_overlaps(pbox, enemy_getBounds(e)) &&
+            enemy_hitTestPixel(e, pbox.x + pbox.w / 2, pbox.y + pbox.h / 2))
         {
             // Small/fragile enemies are destroyed by the collision too, not
             // just the player -- a ramming BEE/SPECIAL/waver doesn't survive
@@ -124,7 +135,8 @@ static void resolveEnemyThreatsVsPlayer(void)
     // Boss body/weak-spot pods: same ramming rule as BIG -- touching it
     // kills the player, but it never dies from the contact itself (only
     // from its weak spots being shot down, see boss_hitWeakSpot()).
-    if (boss_isActive() && aabb_overlaps(pbox, boss_getBounds()))
+    if (boss_isActive() && aabb_overlaps(pbox, boss_getBounds()) &&
+        boss_hitTestPixel(pbox.x + pbox.w / 2, pbox.y + pbox.h / 2))
     {
         player_kill();
         return;

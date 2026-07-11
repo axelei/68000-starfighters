@@ -8,6 +8,7 @@
 #include "enemy.h"
 #include "turret.h"
 #include "boss_patterns_generated.h"
+#include "boss_mask_generated.h"
 
 // -- body: 64x64, built from a single 2-frame sheet per kind (frame 0 =
 // top-left quadrant, frame 1 = bottom-left) -- top-right/bottom-right are
@@ -497,6 +498,36 @@ AABB boss_getBounds(void)
     // the player-ram-death check, not bullet-vs-weak-spot precision.
     AABB box = {F16_toInt(bossX) - 16, F16_toInt(bossY), BOSS_BODY_W + 32, BOSS_BODY_H};
     return box;
+}
+
+bool boss_hitTestPixel(s16 worldX, s16 worldY)
+{
+    s16 localX = worldX - F16_toInt(bossX);
+    s16 localY = worldY - F16_toInt(bossY);
+    if (localX >= 0 && localX < BOSS_BODY_MASK_SIZE && localY >= 0 && localY < BOSS_BODY_MASK_SIZE)
+    {
+        bool rightHalf = localX >= BOSS_QUAD_W;
+        u32 row = rightHalf ? bossBodyMaskHi[currentKind][localY] : bossBodyMaskLo[currentKind][localY];
+        u16 bit = rightHalf ? (u16) (localX - BOSS_QUAD_W) : (u16) localX;
+        if ((row >> bit) & 1)
+            return TRUE;
+    }
+
+    // Flanking pods still count as a ram hazard even where they stick out
+    // past the body's own 64x64 area (see boss_getBounds()) -- plain AABB
+    // here, pods stay unmasked (see boss.h).
+    const BossDef *def = &bossDefs[currentKind];
+    for (u16 i = 0; i < def->weakSpotCount; i++)
+    {
+        if (weakSpots[i].destroyed)
+            continue;
+
+        AABB box = boss_weakSpotBounds(i);
+        if (worldX >= box.x && worldX < box.x + box.w && worldY >= box.y && worldY < box.y + box.h)
+            return TRUE;
+    }
+
+    return FALSE;
 }
 
 u16 boss_weakSpotCount(void)
