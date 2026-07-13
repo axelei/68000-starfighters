@@ -48,6 +48,15 @@ int main(bool hardReset)
     score_resetHandles();
     player_resetHandles();
 
+    // Covers the very first title screen (see title_run(), which now draws
+    // its own background starfield on BG_B), run before terrain_init() has
+    // ever had a chance to set this up this session. Must precede the font
+    // load right below -- changing plane size makes SGDK auto-reload its own
+    // *default* font, which this call's own comment (see terrain.c) explains
+    // needs our font reloaded after, not before, for it to be the one that
+    // sticks. Safe/cheap to call again later from terrain_init() too.
+    terrain_initPlaneSize();
+
     // Covers the very first title screen's "PRESS START" (see title_run()),
     // drawn before terrain_init() has run even once this session. Every
     // title screen/round after this one is covered by the reload inside the

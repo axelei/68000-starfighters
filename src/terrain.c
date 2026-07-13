@@ -119,13 +119,31 @@ static void applyStarfieldMap(u16 bandRow)
     }
 }
 
+void terrain_initPlaneSize(void)
+{
+    // Must precede any tilemap/tileset setup on either plane -- it
+    // recomputes where SGDK places the plane nametables in VRAM (and
+    // therefore where TILE_USER_INDEX-based uploads land), and the game.h
+    // SCREEN_H tile constant relies on the standard V28 mode this doesn't
+    // disturb.
+    VDP_setPlaneSize(PLANE_W_TILES, PLANE_H_TILES, TRUE);
+}
+
+void terrain_initStarfieldOnly(void)
+{
+    // CPU transfer (not DMA): this happens well outside any vblank-aware
+    // loop, so there's no reason to depend on a queued DMA transfer being
+    // flushed later -- CPU makes the upload complete synchronously, right
+    // here.
+    VDP_loadTileSet(&starfield_tileset, STARFIELD_BASE_TILE, CPU);
+
+    for (u16 b = 0; b < BANDS_PER_PLANE; b++)
+        applyStarfieldMap(b * BAND_ROWS);
+}
+
 void terrain_init(void)
 {
-    // Must precede any tilemap/tileset setup below -- it recomputes where
-    // SGDK places the plane nametables in VRAM (and therefore where
-    // TILE_USER_INDEX-based uploads land), and the game.h SCREEN_H tile
-    // constant relies on the standard V28 mode this doesn't disturb.
-    VDP_setPlaneSize(PLANE_W_TILES, PLANE_H_TILES, TRUE);
+    terrain_initPlaneSize();
 
     // BG_A isn't exclusively ours -- the title screen's logo (title.c) is
     // drawn on BG_A too, at columns 0..39 (its full width). applyTerrainMap()
@@ -136,18 +154,13 @@ void terrain_init(void)
     VDP_clearPlane(BG_A, TRUE);
     VDP_clearPlane(BG_B, TRUE);
 
-    // CPU transfer (not DMA): these loads happen well outside any vblank-
-    // aware loop, so there's no reason to depend on a queued DMA transfer
-    // being flushed later -- CPU makes the upload complete synchronously,
-    // right here.
+    // CPU transfer (not DMA): see terrain_initStarfieldOnly()'s comment.
     VDP_loadTileSet(&terrain_tileset, TERRAIN_BASE_TILE, CPU);
-    VDP_loadTileSet(&starfield_tileset, STARFIELD_BASE_TILE, CPU);
 
     for (u16 b = 0; b < BANDS_PER_PLANE; b++)
-    {
         applyTerrainMap(b, b * BAND_ROWS);
-        applyStarfieldMap(b * BAND_ROWS);
-    }
+
+    terrain_initStarfieldOnly();
 
     terrainScroll = 0;
     starfieldScroll = 0;

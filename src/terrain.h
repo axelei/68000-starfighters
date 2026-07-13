@@ -36,9 +36,25 @@ typedef struct
 // array, so callers (see turret.c) must skip those explicitly.
 extern TerrainClump terrainClumps[MAX_TERRAIN_CLUMPS];
 
+// Sets BG_A/BG_B's plane size (see TERRAIN_PLANE_H_PX) -- must precede any
+// tilemap/tileset placement on either plane (SGDK recomputes where the plane
+// nametables live in VRAM when this changes). Exposed separately from
+// terrain_init() so title.c can call it once, early (see main.c), covering
+// the very first title screen -- which runs before terrain_init() itself
+// ever gets a chance to (see main.c's own comment on that). Safe/cheap to
+// call again later from terrain_init() too (same size each time).
+void terrain_initPlaneSize(void);
+
 // Sets up BG_A (terrain) and BG_B (starfield, parallax) tile layers and
 // loads their tilesets. Call once per game.
 void terrain_init(void);
+
+// Loads the starfield tileset and stamps every band of the (looping)
+// starfield plane onto BG_B, without touching BG_A or any of terrain.c's own
+// regen/clump state. Exposed for title.c's standalone background starfield
+// (see its own comment for why it doesn't need the regen machinery
+// terrain_init()'s starfield also gets via terrain_update()).
+void terrain_initStarfieldOnly(void);
 
 // Advances both scroll offsets. Call once per frame.
 void terrain_update(void);

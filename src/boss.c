@@ -429,10 +429,23 @@ void boss_begin(BossKind kind)
         s16 wy = startY + def->weakSpotOffsetY[i];
         u16 attr = TILE_ATTR_FULL(PAL_BOSS, FALSE, FALSE, FALSE, weakSpotNormalTile);
         if (weakSpots[i].sprite == NULL)
-            // SPR_FLAG_INSERT_HEAD -- weak spots must draw in front of the
-            // body (they're created after it, and sprites later in the
-            // list render underneath earlier ones), not get hidden behind it.
-            weakSpots[i].sprite = SPR_addSpriteEx(def->weakSpotSprite, wx, wy, attr, SPR_FLAG_INSERT_HEAD);
+        {
+            // Explicit SPR_setDepth() rather than SPR_FLAG_INSERT_HEAD:
+            // that flag splices the sprite straight to the head of SGDK's
+            // internal list at creation time, bypassing SPR_setDepth's sort
+            // entirely -- fine on its own, but it also sets depth to the
+            // exact SPR_MIN_DEPTH, which ties with anything else at that
+            // same extreme (score.c's GAME OVER letters use
+            // SPR_setAlwaysOnTop(), also SPR_MIN_DEPTH). SGDK's sort always
+            // resolves an exact depth tie by placing whichever sprite last
+            // changed depth *behind* the one already there, so once a weak
+            // spot sprite existed, the letters silently lost that tie and
+            // drew behind it. SPR_MIN_DEPTH + 1 still draws in front of the
+            // body (default SPR_MAX_DEPTH) via a genuine inequality, without
+            // ever tying against SPR_MIN_DEPTH again.
+            weakSpots[i].sprite = SPR_addSpriteEx(def->weakSpotSprite, wx, wy, attr, 0);
+            SPR_setDepth(weakSpots[i].sprite, SPR_MIN_DEPTH + 1);
+        }
         else
         {
             SPR_setDefinition(weakSpots[i].sprite, def->weakSpotSprite);
