@@ -92,6 +92,31 @@ def fill_rect(img, x0, y0, x1, y1, idx):
             set_px(img, x, y, idx)
 
 
+def fill_circle_smooth(img, cx, cy, r, idx, scale=4):
+    """Fills a circle, testing each pixel at `scale`x`scale` sub-sample
+    points and only setting it if at least half are inside -- this can't
+    do true anti-aliasing (no partial-coverage colors in a 4bpp indexed
+    palette), but it does make the boundary track the real circle more
+    closely than a single center-point test, which is what actually reads
+    as "jagged"/"pixelated" at a small radius: a plain per-pixel test can
+    be off by up to half a pixel at the boundary in either direction,
+    while this is only off by 1/(2*scale)."""
+    step = 1.0 / scale
+    half_votes = (scale * scale) // 2
+    w, h = img.size
+    for y in range(max(0, cy - r - 1), min(h, cy + r + 2)):
+        for x in range(max(0, cx - r - 1), min(w, cx + r + 2)):
+            votes = 0
+            for sy in range(scale):
+                for sx in range(scale):
+                    px = x + (sx + 0.5) * step
+                    py = y + (sy + 0.5) * step
+                    if (px - cx) ** 2 + (py - cy) ** 2 <= r * r:
+                        votes += 1
+            if votes > half_votes:
+                set_px(img, x, y, idx)
+
+
 # -- PAL_PLAYER: ship, player bullet, HUD (separator/fill/font), powerups --
 # (only palette_player.png -- i.e. player_ship() below -- is ever loaded onto
 # hardware; every other image drawn with PAL_PLAYER at runtime must use these
@@ -842,6 +867,116 @@ def gameover_letters():
     return combined
 
 
+# -- intro scene background slideshow (see intro.c) -- shown one at a time,
+# behind the scrolling crawl text and above the starfield (see PAL_setPalette
+# in intro.c, which swaps a single dedicated palette slot as the slideshow
+# advances rather than needing all of these loaded simultaneously). Each
+# gets its own PALETTE/SPRITE declaration in resources.res (own compile-time
+# -derived colors, not shared ENEMY_PAL-style reuse), same as the boss
+# roster. 64x64px (8x8 tiles) -- SGDK composes a logical sprite that large
+# from multiple hardware sprite units automatically (rescomp's own docs:
+# frame dimensions "should be < 32" *tiles*, not pixels -- see boss.c's
+# BOSS_QUAD_W/H comment for why *that* file still manually tiles quadrants:
+# an art-reuse mirroring trick, not a hardware ceiling). Purely placeholder
+# shapes -- replace the art and re-run this script; keep any additions in
+# sync with resources.res's INTRO_BG_COUNT-equivalent declarations.
+INTRO_BG_SIZE = 64
+
+
+def intro_bg_planet():
+    # Placeholder: a banded circle with a thin ring, "planet" read. 6 shading
+    # bands (not 3) plus fill_circle_smooth()'s supersampled edge -- both
+    # aimed at the coarse/jagged look a single hard-edged, few-band circle
+    # has at this size (see fill_circle_smooth()'s own comment).
+    pal = common4() + [
+        *[shade((190, 110, 50), f) for f in (1.6, 1.3, 1.0, 0.8, 0.6, 0.4)],  # 4-9 -- body, light to dark
+        *triple((235, 200, 120)),  # 10/11/12 -- ring
+    ] + [(0, 0, 0)] * 3
+    img = new_indexed((INTRO_BG_SIZE, INTRO_BG_SIZE), pal)
+
+    cx, cy, r = 32, 30, 22
+    bands = 6
+    for i in range(bands):
+        # Draws bands back-to-front (widest/darkest first) as concentric
+        # smooth circles rather than a per-pixel band lookup, so each
+        # band's own boundary is separately anti-jagged too.
+        band_r = r - (r * i) // bands
+        fill_circle_smooth(img, cx, cy - (r - band_r) // 2, band_r, 4 + (bands - 1 - i))
+
+    # Thin ring crossing in front of the lower body -- a few short
+    # horizontal strokes rather than a true ellipse, simplest legible read
+    # at this size.
+    for x in range(2, INTRO_BG_SIZE - 2):
+        dy = int(((x - cx) / (INTRO_BG_SIZE / 2)) ** 2 * 6)
+        set_px(img, x, cy + 16 + dy, 10)
+        set_px(img, x, cy + 17 + dy, 11)
+
+    return img
+
+
+def intro_bg_nebula():
+    # Placeholder: a soft overlapping-blob cloud, "nebula" read.
+    # fill_circle_smooth() (not a hard per-pixel test) softens each blob's
+    # edge -- see its own comment.
+    pal = common4() + [
+        *triple((130, 70, 200)),  # 4/5/6
+        *triple((80, 140, 230)),  # 7/8/9
+    ] + [(0, 0, 0)] * 6
+    img = new_indexed((INTRO_BG_SIZE, INTRO_BG_SIZE), pal)
+
+    blobs = [
+        (20, 24, 16, 5), (40, 30, 18, 8), (30, 42, 14, 4),
+        (46, 18, 12, 7), (16, 40, 11, 9),
+    ]
+    for bx, by, br, idx in blobs:
+        fill_circle_smooth(img, bx, by, br, idx)
+
+    return img
+
+
+def intro_bg_fleet():
+    # Placeholder: a handful of small distant-ship silhouettes.
+    pal = common4() + [
+        *triple((90, 100, 120)),  # 4/5/6 -- hulls
+        (170, 190, 220),          # 7 -- running lights
+    ] + [(0, 0, 0)] * 8
+    img = new_indexed((INTRO_BG_SIZE, INTRO_BG_SIZE), pal)
+
+    ships = [(12, 14, 10), (34, 24, 14), (18, 40, 8), (46, 46, 11)]
+    for sx, sy, sw in ships:
+        sh = sw // 2
+        for row in range(sh):
+            half_w = (sw // 2) - row
+            fill_rect(img, sx - half_w, sy + row, sx + half_w, sy + row + 1, 5)
+        set_px(img, sx, sy, 7)
+
+    return img
+
+
+def intro_palette():
+    # A palette-only source image for the intro crawl's text (see intro.c) --
+    # holds no glyph pixels of its own at all (that would make it exactly
+    # the "pre-rendered text image" this scene deliberately avoids -- the
+    # crawl reuses the game's own already-loaded system font tiles
+    # directly, TILE_FONT_INDEX, and just needs *some* small image to derive
+    # a PALETTE resource from, same as every other palette in this game,
+    # e.g. palette_player from player_ship.png). index1 (opaque backing,
+    # matching the system font's own convention) and index2 (ink) are the
+    # only two colors that matter; a minimal few-pixel swatch is all a
+    # PALETTE resource needs to source from. Deliberately NOT common4() --
+    # this needs index1/index2 to be its own backing/ink colors, not
+    # common4()'s literal black/white (which would land at indices 4/5
+    # instead, the wrong slots -- see banner_font()'s own index1=backing/
+    # index2=ink convention, which every font tile in this game, including
+    # the system font this scene reuses, is built against).
+    pal = [TRANSPARENT, (20, 20, 20), (255, 214, 120)] + [(0, 0, 0)] * 13
+    img = new_indexed((3, 1), pal)
+    set_px(img, 0, 0, 0)
+    set_px(img, 1, 0, 1)
+    set_px(img, 2, 0, 2)
+    return img
+
+
 GENERATORS = {
     "player_ship.png": player_ship,
     "enemy_bee.png": enemy_bee,
@@ -866,6 +1001,10 @@ GENERATORS = {
     "hud_separator.png": hud_separator,
     "banner_font.png": banner_font,
     "gameover_letters.png": gameover_letters,
+    "intro_bg_planet.png": intro_bg_planet,
+    "intro_bg_nebula.png": intro_bg_nebula,
+    "intro_bg_fleet.png": intro_bg_fleet,
+    "intro_palette.png": intro_palette,
 }
 
 def git_is_dirty(path):

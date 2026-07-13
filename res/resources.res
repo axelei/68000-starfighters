@@ -83,6 +83,30 @@ SPRITE spr_bullet_homing    "gfx/bullet_homing.png"    2 2 BEST
 // when drawn) -- not one of the 3 shared gameplay hardware palettes.
 IMAGE title_image "gfx/title.png"
 
+// -- intro scene (see intro.c) -- runs once before the very first title
+// screen. Crawl text is drawn at runtime, not pre-rendered -- intro.c word
+// -wraps res/gfx/intro_crawl_text.txt (see generate_intro.py) and stamps it
+// onto the tilemap by reusing the already-loaded system font directly
+// (TILE_FONT_INDEX), no dedicated font asset of its own at all. This
+// PALETTE (loaded onto PAL0, same reasoning as title_image above -- nothing
+// needs it yet this early) supplies the actual ink color -- the reused
+// system font tiles only carry pixel *indices*, not colors of their own --
+// sourced from a small color-swatch image (see generate_placeholders.py's
+// intro_palette()) holding no glyph/text pixels of its own.
+PALETTE palette_intro_crawl "gfx/intro_palette.png"
+
+// Background slideshow images each get their own PALETTE (compile-time
+// -derived from their own PNG, same pattern as the boss roster) since
+// intro.c swaps them one at a time onto a single dedicated hardware slot as
+// the slideshow advances, rather than needing them all loaded simultaneously.
+
+PALETTE palette_intro_bg_planet "gfx/intro_bg_planet.png"
+PALETTE palette_intro_bg_nebula "gfx/intro_bg_nebula.png"
+PALETTE palette_intro_bg_fleet  "gfx/intro_bg_fleet.png"
+SPRITE spr_intro_bg_planet "gfx/intro_bg_planet.png" 8 8 BEST
+SPRITE spr_intro_bg_nebula "gfx/intro_bg_nebula.png" 8 8 BEST
+SPRITE spr_intro_bg_fleet  "gfx/intro_bg_fleet.png"  8 8 BEST
+
 // Title screen music (see title.c) -- played through the XGM2 Z80 driver,
 // loaded only while the title screen is up and unloaded again once Start is
 // pressed, so it never contends with sfx.c's direct PSG writes during

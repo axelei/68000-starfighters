@@ -16,6 +16,7 @@
 #include "sfx.h"
 #include "title.h"
 #include "options.h"
+#include "intro.h"
 
 int main(bool hardReset)
 {
@@ -91,6 +92,11 @@ int main(bool hardReset)
     // initializes it, if this cart/emulator has never written it before)
     // so it's ready before the first game over ever checks against it.
     highscore_init();
+
+    // Once per power-on, before the very first title screen -- see
+    // intro.h's own comment on why this never replays on later returns to
+    // the title screen.
+    intro_run();
 
     do
     {

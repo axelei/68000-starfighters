@@ -1,7 +1,7 @@
 #include "title.h"
 #include "resources.h"
 #include "options.h"
-#include "terrain.h"
+#include "bgstarfield.h"
 
 // Logo is 40x12 tiles (see generate_placeholders.py); centered horizontally,
 // sat in the upper half of the screen.
@@ -37,16 +37,12 @@
 
 // Background starfield (BG_B), drawn behind the logo, that scrolls
 // continuously and fades up very slowly while the title screen is shown --
-// reuses terrain.c's pregenerated star data/tileset (see
-// terrain_initStarfieldOnly()) rather than inventing separate title-only
-// star placement. Unlike gameplay's starfield (terrain_update()), this
-// never regenerates (see terrain_requestRegen()) -- the title screen is
-// never up anywhere near terrain.c's ~40s auto-regen interval, so the same
-// two bands just loop seamlessly via the plane's hardware wraparound.
-#define TITLE_STARFIELD_SPEED REGION_PICK(FIX16(0.4), FIX16(0.48)) // matches terrain.c's STARFIELD_SPEED
+// see bgstarfield.c (shared with intro.c). Unlike gameplay's starfield
+// (terrain_update()), this never regenerates (see terrain_requestRegen())
+// -- the title screen is never up anywhere near terrain.c's ~40s
+// auto-regen interval, so the same two bands just loop seamlessly via the
+// plane's hardware wraparound.
 #define TITLE_STARFIELD_FADE_FRAMES REGION_PICK(240, 200) // ~4s -- much slower than WOBBLE_FRAMES, reads as ambient rather than the hero animation
-
-static fix16 titleStarfieldScroll;
 
 // Fixed, dedicated tile range for the logo -- well clear of terrain.c's
 // TERRAIN_BASE_TILE.."+32" range. Loaded explicitly (rather than via
@@ -75,35 +71,6 @@ static void drawTitleScreen(void)
 
     VDP_drawText("PRESS START", PRESS_START_X, PRESS_START_Y);
     VDP_drawText(CREDITS_TEXT, CREDITS_X, CREDITS_Y);
-}
-
-// Draws both starfield bands onto BG_B and kicks off its slow fade-in from
-// black. Call once, before the logo is shown.
-static void startTitleStarfield(void)
-{
-    terrain_initStarfieldOnly();
-    titleStarfieldScroll = 0;
-    VDP_setVerticalScroll(BG_B, 0);
-
-    // PAL_ENVIRONMENT isn't loaded onto hardware at all outside of gameplay
-    // (see game.h's PAL_ENVIRONMENT / title_fadeInGame(), the only other
-    // writer) -- without this, the starfield's tiles would show as whatever
-    // CRAM happened to already hold (usually black, but not guaranteed) the
-    // instant they're drawn instead of a deliberate fade. Async: runs in the
-    // background across ordinary SYS_doVBlankProcess() calls, same as
-    // XGM2_fadeOutAndStop() elsewhere, rather than blocking title_run().
-    u16 black[16] = {0};
-    PAL_fadePalette(PAL_ENVIRONMENT, black, palette_environment.data, TITLE_STARFIELD_FADE_FRAMES, TRUE);
-}
-
-// Advances the starfield's scroll by one frame. Call every frame the title
-// screen is up (playTitleWobble()'s loop and every SYS_doVBlankProcess() in
-// title_run() itself), so it keeps moving continuously rather than freezing
-// while waiting for Start.
-static void updateTitleStarfield(void)
-{
-    titleStarfieldScroll += TITLE_STARFIELD_SPEED;
-    VDP_setVerticalScroll(BG_B, -F16_toInt(titleStarfieldScroll));
 }
 
 // Plays the intro wobble once: switches BG_A to per-line horizontal scroll
@@ -156,7 +123,7 @@ static void playTitleWobble(void)
             musicStarted = TRUE;
         }
 
-        updateTitleStarfield();
+        bgstarfield_update();
         SYS_doVBlankProcess();
     }
 
@@ -220,7 +187,7 @@ void title_run(void)
     // playTitleWobble() once that first frame's state is fully committed.
     VDP_setEnable(FALSE);
     drawTitleScreen();
-    startTitleStarfield();
+    bgstarfield_start(TITLE_STARFIELD_FADE_FRAMES);
 
     // Loaded once here and left running -- see main.c/sfx.c if in-game music
     // is added later, since sfx.c currently writes directly to the PSG from
@@ -243,7 +210,7 @@ void title_run(void)
     // straight through to fade-out and back into a new game).
     while (JOY_readJoypad(JOY_1) & BUTTON_START)
     {
-        updateTitleStarfield();
+        bgstarfield_update();
         SYS_doVBlankProcess();
     }
 
@@ -255,7 +222,7 @@ void title_run(void)
     // going into that redraw).
     while (TRUE)
     {
-        updateTitleStarfield();
+        bgstarfield_update();
         SYS_doVBlankProcess();
         u16 joy = JOY_readJoypad(JOY_1);
         if (!(joy & BUTTON_START))
@@ -267,7 +234,7 @@ void title_run(void)
             drawTitleScreen();
             while (JOY_readJoypad(JOY_1) & BUTTON_START)
             {
-                updateTitleStarfield();
+                bgstarfield_update();
                 SYS_doVBlankProcess();
             }
         }
