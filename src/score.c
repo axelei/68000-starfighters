@@ -352,8 +352,20 @@ void score_init(void)
         L->startAngleDeg = i * (360 / GAMEOVER_LETTER_COUNT);
 
         if (L->sprite == NULL)
+        {
             L->sprite = SPR_addSprite(&spr_gameover_letters, L->finalX, L->finalY,
                                        TILE_ATTR(PAL_PLAYER, FALSE, FALSE, FALSE));
+            // Must win the draw order against every other sprite, including
+            // ones that show up *after* it (e.g. boss weak-spot pods use
+            // SPR_FLAG_INSERT_HEAD to draw in front of the boss body -- see
+            // boss.c -- which would otherwise also put them in front of
+            // this, since these letters are only ever created once, here,
+            // long before any boss encounter). SPR_setAlwaysOnTop() pins
+            // this sprite's depth below SPR_MIN_DEPTH permanently, which
+            // beats list-order/INSERT_HEAD entirely rather than just
+            // matching it.
+            SPR_setAlwaysOnTop(L->sprite);
+        }
         SPR_setFrame(L->sprite, gameoverLetterFrame[i]);
         SPR_setVisibility(L->sprite, HIDDEN);
     }
