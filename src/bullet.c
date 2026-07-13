@@ -152,7 +152,7 @@ bool bullet_spawn_enemy(fix16 x, fix16 y, fix16 vx, fix16 vy)
 
 bool bullet_spawn_enemy_homing(fix16 x, fix16 y, fix16 vx, fix16 vy)
 {
-    Bullet *b = spawn(enemyBullets, MAX_ENEMY_BULLETS, &spr_bullet_homing, PAL_BOSS, homingBulletTile, x, y, vx, vy);
+    Bullet *b = spawn(enemyBullets, MAX_ENEMY_BULLETS, &spr_bullet_homing, PAL_ENEMY, homingBulletTile, x, y, vx, vy);
     if (b == NULL)
         return FALSE;
 

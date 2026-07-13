@@ -61,9 +61,12 @@ SPRITE spr_enemy_waver_c  "gfx/enemy_waver_c.png"  2 2 BEST
 // -- see generate_placeholders.py's boss_body()), plus 1-3 independently
 // destructible 16x16 weak-spot pods (3-frame sheet: normal/hit-flash/
 // destroyed), count/placement varying per kind (see boss.c's BossDef).
-// The homing bullet is shared across every kind (2-frame sheet:
-// normal/hit-flash) -- its indices alias whichever kind's palette is
-// currently swapped onto PAL3, so it re-colors for free.
+// The homing bullet (2-frame sheet: normal/hit-flash) is shared across
+// every kind too, but drawn with PAL_ENEMY rather than PAL_BOSS (see
+// bullet.c's bullet_spawn_enemy_homing()) -- a fixed, always-loaded
+// palette regardless of which boss kind is currently active, unlike
+// PAL_BOSS which only holds whatever kind's colors boss_begin() last
+// swapped onto PAL3.
 SPRITE spr_boss_body_a      "gfx/boss_body_a.png"      4 4 BEST
 SPRITE spr_boss_body_b      "gfx/boss_body_b.png"      4 4 BEST
 SPRITE spr_boss_body_c      "gfx/boss_body_c.png"      4 4 BEST
