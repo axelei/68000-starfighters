@@ -54,6 +54,11 @@ bool bullet_spawn_enemy_homing(fix16 x, fix16 y, fix16 vx, fix16 vy);
 // pile up if the player doesn't shoot them down quickly.
 u16 bullet_countActiveHoming(void);
 
+// Deactivates every currently active homing bullet, silently (no explosion,
+// no score) -- called when the boss that fired them is defeated (see
+// boss.c's triggerDeath()), so its lingering threats don't outlive it.
+void bullet_clearHoming(void);
+
 // Applies damage to a homing bullet (from a player bullet hit -- see
 // collision.c), flashing it briefly; deactivates it (with an explosion,
 // no score) once hp reaches 0. No-op if the bullet isn't actually homing.

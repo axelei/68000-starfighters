@@ -171,6 +171,13 @@ u16 bullet_countActiveHoming(void)
     return count;
 }
 
+void bullet_clearHoming(void)
+{
+    for (u16 i = 0; i < MAX_ENEMY_BULLETS; i++)
+        if (enemyBullets[i].active && enemyBullets[i].isHoming)
+            bullet_deactivate(&enemyBullets[i]);
+}
+
 void bullet_hitHoming(Bullet *b, s16 damage)
 {
     if (!b->isHoming)

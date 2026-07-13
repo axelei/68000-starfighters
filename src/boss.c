@@ -576,6 +576,11 @@ static void triggerDeath(void)
 {
     sfx_play_bossDeathScream();
 
+    // The boss is defeated -- its still-in-flight homing bullets shouldn't
+    // remain a live hazard through the death-scream/explosion sequence (or
+    // outlive the fight entirely and greet the next wave).
+    bullet_clearHoming();
+
     s16 x = F16_toInt(bossX);
     s16 y = F16_toInt(bossY);
     for (u16 i = 0; i < DEATH_EXPLOSION_COUNT; i++)

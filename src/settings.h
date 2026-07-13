@@ -24,7 +24,7 @@
 
 // Wave index (0-based, mod WAVE_COUNT -- see waves_generated.h) the game
 // starts on, instead of wave 0. See formation_init().
-#define DEBUG_START_WAVE 8
+#define DEBUG_START_WAVE 2
 
 // If TRUE, the player can never take a hit -- player_kill() becomes a no-op.
 // See player_kill() in player.c.
