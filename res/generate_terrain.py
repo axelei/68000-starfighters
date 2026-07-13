@@ -13,6 +13,7 @@ with terrain.c's own copies -- see the comments there):
     python generate_terrain.py
 """
 
+import math
 import os
 import random
 
@@ -35,6 +36,55 @@ STARFIELD_MAP_MAX_STARS = 128  # >5 stddev above the ~80 expected stars/band
 OUT_PATH = os.path.join(os.path.dirname(__file__), "..", "src", "terrain_generated.h")
 
 
+def smoothstep(t):
+    return t * t * (3 - 2 * t)
+
+
+NOISE_CELL_SIZE = 4  # lattice spacing in output cells -- see value_noise_2d()
+
+
+def value_noise_2d(rnd, w, h, cell_size=NOISE_CELL_SIZE):
+    """Returns a w x h grid of smoothly-varying values in [0,1) -- "value
+    noise": a coarse lattice of independent random values (spaced cell_size
+    output-cells apart) bilinearly interpolated with smoothstep easing.
+    Simpler than true Perlin noise (no gradient vectors, just scalars) but
+    gives the same organic, blobby look at the small sizes clumps use here,
+    with no external dependency (stdlib random only, keeps regeneration
+    reproducible from SEED alone).
+    """
+    lattice_w = (w // cell_size) + 2
+    lattice_h = (h // cell_size) + 2
+    lattice = [[rnd.random() for _ in range(lattice_w)] for _ in range(lattice_h)]
+
+    grid = [[0.0] * w for _ in range(h)]
+    for y in range(h):
+        gy = y / cell_size
+        iy = int(gy)
+        ty = smoothstep(gy - iy)
+        for x in range(w):
+            gx = x / cell_size
+            ix = int(gx)
+            tx = smoothstep(gx - ix)
+
+            top = lattice[iy][ix] + (lattice[iy][ix + 1] - lattice[iy][ix]) * tx
+            bottom = lattice[iy + 1][ix] + (lattice[iy + 1][ix + 1] - lattice[iy + 1][ix]) * tx
+            grid[y][x] = top + (bottom - top) * ty
+
+    return grid
+
+
+# Threshold applied to the noise*falloff density field below -- tuned by eye
+# (see the __main__ density printout) to land roughly the same overall
+# solid-cell density the old corner-carve approach had (that only ever
+# carved the 4 corner cells, ~90%+ solid), while still letting noise cut
+# real gaps through the interior instead of leaving it a solid rectangle.
+DENSITY_THRESHOLD = 0.20
+# How strongly the radial falloff dominates at the box corners (1.0 = the
+# corner's density is forced to 0 regardless of noise; lower keeps corners
+# noise-influenced too, giving raggeder, less perfectly-round edges).
+FALLOFF_STRENGTH = 0.75
+
+
 def gen_terrain_map(rnd):
     clumps = []
     for a in range(ANCHORS_PER_BAND):
@@ -49,14 +99,34 @@ def gen_terrain_map(rnd):
         ox = min(cx + rnd.randrange(CLUMP_SPACING - w), VISIBLE_COLS - w)
         oy = rnd.randrange(BAND_ROWS - h)
 
+        # Blend value noise with an inverted radial falloff from the box's
+        # center: falloff dominates near the corners (keeps the blob roughly
+        # anchored inside its box instead of noise spilling a tendril clean
+        # off the edge), noise dominates near the middle (carves an organic,
+        # non-rectangular silhouette instead of a solid block) -- pure noise
+        # alone can carve all the way through and leave a fragmented mess,
+        # pure falloff alone is just a soft-edged circle.
+        noise = value_noise_2d(rnd, w, h)
+        centerX, centerY = (w - 1) / 2, (h - 1) / 2
+        maxDist = math.hypot(centerX, centerY) or 1  # avoid /0 for a 1x1 clump
+
         # Exactly w*h values, no padding -- the decoder in terrain.c knows
         # to stop once it has produced w*h cells (see TerrainMapClump).
         cells = [0] * (w * h)
         for dy in range(h):
             for dx in range(w):
-                corner = (dx == 0 or dx == w - 1) and (dy == 0 or dy == h - 1)
-                if corner and rnd.getrandbits(2) == 0:
-                    continue  # leave as 0 (gap) -- irregular blob edges
+                dist = math.hypot(dx - centerX, dy - centerY) / maxDist  # 0 center .. 1 corner
+                density = noise[dy][dx] * (1 - dist * FALLOFF_STRENGTH)
+
+                # Always keep the center solid -- guards against an unlucky
+                # noise roll leaving a whole anchor slot invisible (a wasted
+                # slot, not a gameplay bug -- terrain is decorative -- but
+                # visibly odd), same spirit as the old code never being able
+                # to carve every cell of anything bigger than 1x1.
+                isCenter = dx == round(centerX) and dy == round(centerY)
+                if density < DENSITY_THRESHOLD and not isCenter:
+                    continue  # gap -- see terrain.c's cell==0 convention
+
                 variant = rnd.getrandbits(2)  # 0..3
                 cells[dy * w + dx] = variant + 1  # +1: 0 is reserved for "gap"
 
@@ -176,4 +246,15 @@ if __name__ == "__main__":
     with open(OUT_PATH, "w") as f:
         f.write(header)
 
+    total_cells = 0
+    solid_cells = 0
+    for clumps in terrainMaps:
+        for c in clumps:
+            if c is None:
+                continue
+            _, _, _, _, cells = c
+            total_cells += len(cells)
+            solid_cells += sum(1 for v in cells if v != 0)
+
     print(f"wrote {OUT_PATH} ({TERRAIN_MAP_COUNT} terrain maps, {STARFIELD_MAP_COUNT} starfield maps)")
+    print(f"terrain clump density: {solid_cells}/{total_cells} cells solid ({100 * solid_cells // total_cells}%)")
