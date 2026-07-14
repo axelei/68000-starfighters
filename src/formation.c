@@ -193,17 +193,21 @@ void formation_init(void)
 
 void formation_update(void)
 {
-    // If the player runs out of lives while a "WAVE N" banner is already up,
-    // don't let it keep sitting there over the "GAME OVER" text -- cut it
-    // short and spawn immediately, same as startWave() does when game-over
-    // is already true going in.
-    if (announceTimer > 0 && player_isGameOver())
+    // Once the player is out of lives, wave progression freezes completely
+    // -- no timer here keeps ticking, and no new wave (regular or boss)
+    // ever spawns; only the enemies/bullets/etc. already on screen keep
+    // animating out on their own (see main.c, which still calls
+    // enemies_update()/bullets_update()/etc. unconditionally). The one
+    // exception is tidying up a "WAVE N" banner that was already up when
+    // game over hit, so it doesn't keep sitting there over the "GAME OVER"
+    // text -- the wave it was about to announce is simply dropped instead
+    // of spawning.
+    if (player_isGameOver())
     {
-        announceTimer = 0;
-        score_hideWaveAnnouncement();
-        if (waveSpawnPending)
+        if (announceTimer > 0)
         {
-            spawnWave(waveIndex);
+            announceTimer = 0;
+            score_hideWaveAnnouncement();
             waveSpawnPending = FALSE;
         }
         return;
@@ -237,11 +241,9 @@ void formation_update(void)
         return;
     }
 
-    // formation_update() (and everything else) keeps running behind the
-    // "GAME OVER" screen -- see main.c -- but the wave clock specifically
-    // should freeze there rather than keep ticking down/hitting 0 while the
-    // player can't do anything about it.
-    if (!inInterwave && !inBossFight && !waveForcedOut && waveTimer > 0 && !player_isGameOver())
+    // No !player_isGameOver() check needed here -- the whole function
+    // returns early once that's true (see the top of formation_update()).
+    if (!inInterwave && !inBossFight && !waveForcedOut && waveTimer > 0)
     {
         waveTimer--;
         if (waveTimer == 0)

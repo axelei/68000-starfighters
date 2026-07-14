@@ -790,7 +790,11 @@ void boss_update(void)
         // Frozen in place (every weak spot already shows its destroyed
         // husk) while the death scream/staggered explosions play out --
         // see triggerDeath(). boss_isActive() stays TRUE for this whole
-        // delay, so formation.c doesn't cut to the next wave early.
+        // delay, so formation.c doesn't cut to the next wave early. Left
+        // running even during game over (unlike everything below) --
+        // formation_update() itself is frozen by then (see its own
+        // player_isGameOver() check), so endFight() clearing bossActive
+        // here can't cause a new wave/encounter to start.
         if (deathDelayTimer > 0)
         {
             deathDelayTimer--;
@@ -799,6 +803,16 @@ void boss_update(void)
         endFight();
         return;
     }
+
+    // Once the player is out of lives, the boss just freezes in place --
+    // no life-timer countdown, no forced exit dive, no repositioning dive,
+    // no new attacks -- same "wave progression stops, action already in
+    // flight keeps playing out" rule as formation.c's own
+    // player_isGameOver() freeze. Bullets it already fired keep moving
+    // (bullets_update() in main.c isn't gated on this), just no new ones
+    // get added.
+    if (player_isGameOver())
+        return;
 
     if (!exitingAfterMove)
     {
