@@ -129,9 +129,16 @@ int main(bool hardReset)
         boss_init();
         score_init();
         player_init();
-        formation_init();
 
         title_fadeInGame();
+
+        // Must come after title_fadeInGame(): formation_init() can spawn
+        // sprites/palette writes immediately (e.g. boss_begin(), when
+        // DEBUG_START_WAVE lands on a boss slot) -- running it before the
+        // fade-in let title_fadeInGame()'s own PAL_fadeInAll() clobber
+        // whatever it had just set, most visibly stomping boss_begin()'s
+        // real per-kind PAL_BOSS palette back to the placeholder default.
+        formation_init();
 
         bool gameOverShown = FALSE;
         bool startReleased = FALSE; // debounce: ignore Start until it's been let go once
