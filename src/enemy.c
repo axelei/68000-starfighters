@@ -440,6 +440,8 @@ void enemy_hit(Enemy *e, s16 damage)
 
     if (e->hp <= 0)
         enemy_kill(e);
+    else
+        score_addHit(); // small reward for a landed shot that didn't finish the job
 }
 
 void enemy_kill(Enemy *e)

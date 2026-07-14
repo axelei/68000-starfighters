@@ -133,6 +133,9 @@ static const u8 gameoverLetterFrame[GAMEOVER_LETTER_COUNT] = {0, 1, 2, 3, 4, 5, 
 #define POINTS_TURRET  200
 #define POINTS_WAVER   150 // ENEMY_KIND_WAVER_A/B/C -- same for all 3, they only differ in path
 
+// Small reward for a shot that lands but doesn't kill -- see score_addHit().
+#define POINTS_HIT 5
+
 // Awarded once per inter-wave formation if every waver in it was shot down
 // (see formation.c's beginInterwave()/enemies_waverKillCount()).
 #define INTERWAVE_PERFECT_BONUS 1000
@@ -382,6 +385,11 @@ void score_addKill(EnemyKind kind)
         case ENEMY_KIND_WAVER_C: addScore(POINTS_WAVER);   break;
         default:                 addScore(POINTS_BEE);     break;
     }
+}
+
+void score_addHit(void)
+{
+    addScore(POINTS_HIT);
 }
 
 void score_addTurretKill(void)

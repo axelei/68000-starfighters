@@ -14,6 +14,11 @@ void score_resetHandles(void);
 void score_addKill(EnemyKind kind);
 void score_addTurretKill(void);
 
+// Small reward for landing a shot that doesn't destroy its target -- see
+// enemy.c's enemy_hit(), called only when the hit didn't also kill (that
+// case already scores through score_addKill() instead).
+void score_addHit(void);
+
 // Awarded once when every enemy in an inter-wave formation was shot down --
 // see formation.c's beginInterwave()/enemies_waverKillCount().
 void score_addInterwavePerfectBonus(void);

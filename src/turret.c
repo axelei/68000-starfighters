@@ -222,7 +222,10 @@ void turret_hit(Turret *t, s16 damage)
     SPR_setVRAMTileIndex(t->sprite, flashTile);
 
     if (t->hp > 0)
+    {
+        score_addHit(); // small reward for a landed shot that didn't finish the job
         return;
+    }
 
     s16 x = F16_toInt(t->x);
     s16 y = F16_toInt(t->y);

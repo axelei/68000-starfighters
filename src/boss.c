@@ -174,11 +174,11 @@ static const BossAttackKind cycleE[] = {BOSS_ATTACK_SPREAD, BOSS_ATTACK_WALL, BO
 // Meaningfully tougher than any regular enemy (HP_BIG in enemy.c is 100) --
 // a boss appearing every 3 waves should be a real fight, not a single BIG
 // enemy split into parts. At the player's ~7.5 shots/sec fire rate
-// (FIRE_COOLDOWN in player.c) 150 HP is roughly a minute of sustained,
-// accurately-aimed fire per pod -- comfortably inside the hidden 5-minute
-// limit even with dodging cutting into actual hit uptime. Kind C (3 pods)
-// and D (1 big pod) scale the per-pod HP so the total effort stays in the
-// same ballpark.
+// (FIRE_COOLDOWN in player.c) 90 HP is roughly 36s of sustained,
+// accurately-aimed fire per pod (60% of the original 150 -- toned down so a
+// fight doesn't drag) -- comfortably inside the hidden 5-minute limit even
+// with dodging cutting into actual hit uptime. Kind C (3 pods) and D (1 big
+// pod) scale the per-pod HP so the total effort stays in the same ballpark.
 static const BossDef bossDefs[BOSS_KIND_COUNT] = {
     // A -- crimson diamond hull, 2 side-flanking pods (the original layout).
     {
@@ -186,7 +186,7 @@ static const BossDef bossDefs[BOSS_KIND_COUNT] = {
         2,
         {-8, BOSS_BODY_W - WEAKSPOT_W + 8, 0},
         {(BOSS_BODY_H - WEAKSPOT_H) / 2, (BOSS_BODY_H - WEAKSPOT_H) / 2, 0},
-        150,
+        90,
         cycleA, 3,
         FIX16(2), FIX16(2.4), FIX16(0.5), FIX16(0.6), 240, 200,
     },
@@ -196,7 +196,7 @@ static const BossDef bossDefs[BOSS_KIND_COUNT] = {
         2,
         {(BOSS_BODY_W - WEAKSPOT_W) / 2, (BOSS_BODY_W - WEAKSPOT_W) / 2, 0},
         {-8, BOSS_BODY_H - WEAKSPOT_H + 8, 0},
-        150,
+        90,
         cycleB, 3,
         FIX16(2), FIX16(2.4), FIX16(0.5), FIX16(0.6), 180, 150,
     },
@@ -206,7 +206,7 @@ static const BossDef bossDefs[BOSS_KIND_COUNT] = {
         3,
         {-8, BOSS_BODY_W - WEAKSPOT_W + 8, (BOSS_BODY_W - WEAKSPOT_W) / 2},
         {16, 16, 48},
-        110,
+        66,
         cycleC, 3,
         FIX16(3), FIX16(3.6), FIX16(0.7), FIX16(0.84), 220, 183,
     },
@@ -216,7 +216,7 @@ static const BossDef bossDefs[BOSS_KIND_COUNT] = {
         1,
         {(BOSS_BODY_W - WEAKSPOT_W) / 2, 0, 0},
         {(BOSS_BODY_H - WEAKSPOT_H) / 2, 0, 0},
-        300,
+        180,
         cycleD, 3,
         FIX16(1), FIX16(1.2), FIX16(0.3), FIX16(0.36), 260, 217,
     },
@@ -226,7 +226,7 @@ static const BossDef bossDefs[BOSS_KIND_COUNT] = {
         2,
         {-16, BOSS_BODY_W - WEAKSPOT_W + 16, 0},
         {(BOSS_BODY_H - WEAKSPOT_H) / 2, (BOSS_BODY_H - WEAKSPOT_H) / 2, 0},
-        150,
+        90,
         cycleE, 3,
         FIX16(3), FIX16(3.6), FIX16(0.7), FIX16(0.84), 200, 167,
     },
@@ -618,6 +618,7 @@ void boss_hitWeakSpot(u16 index, s16 damage)
 
     ws->hitFlashTimer = WEAKSPOT_HIT_FLASH_FRAMES;
     SPR_setVRAMTileIndex(ws->sprite, weakSpotFlashTile);
+    score_addHit(); // small reward for a landed shot that didn't finish the job
 }
 
 // Normalizes (dx,dy) to a unit vector scaled by speed -- one-shot per call
