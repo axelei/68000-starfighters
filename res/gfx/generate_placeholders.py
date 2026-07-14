@@ -873,28 +873,39 @@ def gameover_letters():
 # advances rather than needing all of these loaded simultaneously). Each
 # gets its own PALETTE/SPRITE declaration in resources.res (own compile-time
 # -derived colors, not shared ENEMY_PAL-style reuse), same as the boss
-# roster. 64x64px (8x8 tiles) -- SGDK composes a logical sprite that large
-# from multiple hardware sprite units automatically (rescomp's own docs:
-# frame dimensions "should be < 32" *tiles*, not pixels -- see boss.c's
-# BOSS_QUAD_W/H comment for why *that* file still manually tiles quadrants:
-# an art-reuse mirroring trick, not a hardware ceiling). Purely placeholder
-# shapes -- replace the art and re-run this script; keep any additions in
-# sync with resources.res's INTRO_BG_COUNT-equivalent declarations.
-INTRO_BG_SIZE = 64
+# roster. 240x112px (30x14 tiles), centered in the crawl scene's top-half
+# band (SCREEN_W x SPLIT_ROW_TILES*8 in intro.c) rather than filling it edge
+# to edge -- rescomp hard-rejects a single SPRITE frame >=32 tiles in either
+# dimension ("Wrong SPRITE definition ... should be < 32", a real compile
+# error, not just a soft convention -- see boss.c's BOSS_QUAD_W/H comment
+# for a case that manually tiles quadrants for art-reuse reasons instead),
+# so a true 40-tile-wide (320px) edge-to-edge frame isn't possible as one
+# sprite. 30 tiles comfortably clears that limit while still being far
+# larger than any other sprite in this project (the previous 8x8 size, or
+# boss.c's 4x4). SGDK still composes this from multiple hardware sprite
+# units automatically -- 30x14 tiles needs 8x4=32 of the VDP's 80-sprite
+# budget for one frame, well within it, and nothing else uses the sprite
+# layer during this scene. Purely placeholder shapes -- replace the art and
+# re-run this script; keep any additions in sync with resources.res's
+# INTRO_BG_COUNT-equivalent declarations.
+INTRO_BG_W = 240
+INTRO_BG_H = 112
 
 
 def intro_bg_planet():
-    # Placeholder: a banded circle with a thin ring, "planet" read. 6 shading
+    # Placeholder: a banded circle with a thin ring, "planet" read, centered
+    # in the 240x112 canvas (some empty/starfield-showing-through space
+    # either side, same as a letterboxed establishing shot). 6 shading
     # bands (not 3) plus fill_circle_smooth()'s supersampled edge -- both
     # aimed at the coarse/jagged look a single hard-edged, few-band circle
-    # has at this size (see fill_circle_smooth()'s own comment).
+    # would otherwise have (see fill_circle_smooth()'s own comment).
     pal = common4() + [
         *[shade((190, 110, 50), f) for f in (1.6, 1.3, 1.0, 0.8, 0.6, 0.4)],  # 4-9 -- body, light to dark
         *triple((235, 200, 120)),  # 10/11/12 -- ring
     ] + [(0, 0, 0)] * 3
-    img = new_indexed((INTRO_BG_SIZE, INTRO_BG_SIZE), pal)
+    img = new_indexed((INTRO_BG_W, INTRO_BG_H), pal)
 
-    cx, cy, r = 32, 30, 22
+    cx, cy, r = INTRO_BG_W // 2, INTRO_BG_H // 2, 48
     bands = 6
     for i in range(bands):
         # Draws bands back-to-front (widest/darkest first) as concentric
@@ -906,27 +917,32 @@ def intro_bg_planet():
     # Thin ring crossing in front of the lower body -- a few short
     # horizontal strokes rather than a true ellipse, simplest legible read
     # at this size.
-    for x in range(2, INTRO_BG_SIZE - 2):
-        dy = int(((x - cx) / (INTRO_BG_SIZE / 2)) ** 2 * 6)
-        set_px(img, x, cy + 16 + dy, 10)
-        set_px(img, x, cy + 17 + dy, 11)
+    for x in range(max(0, cx - r - 2), min(INTRO_BG_W, cx + r + 2)):
+        dy = int(((x - cx) / r) ** 2 * 10)
+        y0 = cy + r // 3 + dy
+        if 0 <= y0 < INTRO_BG_H:
+            set_px(img, x, y0, 10)
+        if 0 <= y0 + 1 < INTRO_BG_H:
+            set_px(img, x, y0 + 1, 11)
 
     return img
 
 
 def intro_bg_nebula():
-    # Placeholder: a soft overlapping-blob cloud, "nebula" read.
+    # Placeholder: a soft overlapping-blob cloud, "nebula" read, spread
+    # across the 240x112 canvas rather than clustered in one corner.
     # fill_circle_smooth() (not a hard per-pixel test) softens each blob's
     # edge -- see its own comment.
     pal = common4() + [
         *triple((130, 70, 200)),  # 4/5/6
         *triple((80, 140, 230)),  # 7/8/9
     ] + [(0, 0, 0)] * 6
-    img = new_indexed((INTRO_BG_SIZE, INTRO_BG_SIZE), pal)
+    img = new_indexed((INTRO_BG_W, INTRO_BG_H), pal)
 
     blobs = [
-        (20, 24, 16, 5), (40, 30, 18, 8), (30, 42, 14, 4),
-        (46, 18, 12, 7), (16, 40, 11, 9),
+        (41, 45, 26, 5), (98, 60, 30, 8), (71, 85, 22, 4),
+        (150, 35, 20, 7), (191, 70, 26, 9), (26, 90, 16, 5),
+        (131, 90, 18, 8), (210, 50, 18, 4),
     ]
     for bx, by, br, idx in blobs:
         fill_circle_smooth(img, bx, by, br, idx)
@@ -935,14 +951,18 @@ def intro_bg_nebula():
 
 
 def intro_bg_fleet():
-    # Placeholder: a handful of small distant-ship silhouettes.
+    # Placeholder: a handful of small distant-ship silhouettes, spread out
+    # across the 240x112 canvas.
     pal = common4() + [
         *triple((90, 100, 120)),  # 4/5/6 -- hulls
         (170, 190, 220),          # 7 -- running lights
     ] + [(0, 0, 0)] * 8
-    img = new_indexed((INTRO_BG_SIZE, INTRO_BG_SIZE), pal)
+    img = new_indexed((INTRO_BG_W, INTRO_BG_H), pal)
 
-    ships = [(12, 14, 10), (34, 24, 14), (18, 40, 8), (46, 46, 11)]
+    ships = [
+        (23, 35, 14), (56, 65, 20), (94, 25, 12), (124, 75, 22),
+        (158, 40, 14), (188, 70, 18), (218, 30, 12),
+    ]
     for sx, sy, sw in ships:
         sh = sw // 2
         for row in range(sh):

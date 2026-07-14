@@ -75,10 +75,10 @@
 // starfield via bgstarfield.c/PAL_ENVIRONMENT; none of PAL_PLAYER/ENEMY/
 // ENVIRONMENT/BOSS are loaded yet at this point in main(), so borrowing
 // raw PAL1 here is safe, same reasoning as title.c's PAL0 borrow for the
-// logo). Lives in the top half (see SPLIT_ROW_TILES) -- centered within
-// it, not sharing rows with the crawl at all, which is what actually keeps
-// it visible (see startBgSlideshow()'s comment on why coexisting with
-// opaque BG_A text on the same rows doesn't work on this hardware).
+// logo). Fills nearly all of the top half (see SPLIT_ROW_TILES), centered,
+// not sharing rows with the crawl at all, which is what actually keeps it
+// visible (see startBgSlideshow()'s comment on why coexisting with opaque
+// BG_A text on the same rows doesn't work on this hardware).
 //
 // Each image's on-screen duration is derived from INTRO_TOTAL_FRAMES (see
 // startBgSlideshow()) -- generate_intro.py's computed total split evenly
@@ -86,23 +86,47 @@
 // so slide pacing always tracks however long the crawl text actually takes
 // regardless of script length.
 #define BG_FADE_FRAMES REGION_PICK(30, 25) // ~0.5s fade each way, see updateBgSlideshow()
-#define BG_X ((SCREEN_W - 64) / 2)
-#define BG_Y ((SPLIT_ROW_TILES * 8 - 64) / 2)
+
+// 240x112 (30x14 tiles), centered in the SCREEN_W-wide top-half band (see
+// generate_placeholders.py's own INTRO_BG_W/H comment). Drawn onto the
+// WINDOW plane's own tilemap (see startBgSlideshow()), not a sprite -- a
+// single SPRITE frame this large hits two separate rescomp/hardware
+// ceilings (no dimension >=32 tiles; no more than 16 internal
+// hardware-sprite pieces per frame, which is content-dependent, not just
+// size), neither of which applies to a background plane.
+#define BG_IMG_W 240
+#define BG_IMG_H 112
+#define BG_TILE_X ((SCREEN_W / 8 - BG_IMG_W / 8) / 2)
+#define BG_TILE_Y ((SPLIT_ROW_TILES - BG_IMG_H / 8) / 2)
+
+// Dedicated tile range for the slideshow images -- well clear of
+// TILE_FONT_INDEX (the crawl text's own tiles, at the opposite, high end of
+// tile space) and of terrain.c's own TERRAIN_BASE_TILE/STARFIELD_BASE_TILE
+// (TILE_USER_INDEX/+16) -- unlike title.c's/gameplay's tile ranges (which
+// only ever need to avoid *sequential* reuse, since none of them are ever
+// on screen at the same time as this scene), bgstarfield_start() actively
+// loads its starfield tiles at STARFIELD_BASE_TILE and keeps them on
+// screen for this scene's entire runtime, so this really does need to
+// avoid a *concurrent* collision, not just claim an unused range for
+// later. +32 matches score.c's own HUD_FILL_TILE convention for "past
+// terrain(4)/starfield(3) tiles". Every slide reuses this exact same base
+// index (see updateBgSlideshow()), so VRAM usage never grows across the
+// show -- each new image's tiles simply overwrite the previous one's.
+#define BG_BASE_TILE (TILE_USER_INDEX + 32)
 
 typedef struct
 {
-    const SpriteDefinition *sprite;
+    const Image *image;
     const Palette *palette;
 } IntroBgFrame;
 
 static const IntroBgFrame introBgFrames[] = {
-    { &spr_intro_bg_planet, &palette_intro_bg_planet },
-    { &spr_intro_bg_nebula, &palette_intro_bg_nebula },
-    { &spr_intro_bg_fleet,  &palette_intro_bg_fleet },
+    { &img_intro_bg_planet, &palette_intro_bg_planet },
+    { &img_intro_bg_fleet,  &palette_intro_bg_fleet },
+    { &img_intro_bg_nebula, &palette_intro_bg_nebula },
 };
 #define BG_FRAME_COUNT (sizeof(introBgFrames) / sizeof(introBgFrames[0]))
 
-static Sprite *bgSprite;
 static u16 bgSlideFrames; // total frames each image gets on screen, including its own fade in/out
 static u16 bgSlideTimer;  // counts down within the current image's window
 static u8 bgIndex;
@@ -110,17 +134,13 @@ static bool bgFadingOut;  // guards updateBgSlideshow()'s fade-out trigger to fi
 
 static void startBgSlideshow(void)
 {
-    // SPR_addSprite() (not SPR_addSpriteEx(..., 0)) -- the Ex form with a
-    // 0 flag disables *all* automatic VRAM allocation/tile upload, and
-    // TILE_ATTR() (unlike TILE_ATTR_FULL()) never sets a tile index at
-    // all, so the sprite would just display whatever unrelated tile
-    // happened to already sit at VRAM index 0 -- garbage, not this
-    // sprite's actual art (boss.c's own SPR_addSpriteEx(..., 0) calls get
-    // away with this only because they separately upload tiles and pass an
-    // explicit index via TILE_ATTR_FULL; this scene doesn't need that
-    // manual VRAM control, so the plain auto-managed form is simpler and
-    // correct here, same as score.c's game-over letters).
-    bgSprite = SPR_addSprite(introBgFrames[0].sprite, BG_X, BG_Y, TILE_ATTR(PAL1, FALSE, FALSE, FALSE));
+    // loadpal=FALSE: colors are handled entirely through our own
+    // PAL_setPalette/PAL_fadePalette calls below (see this call's own
+    // comment on why the very first one must be instant, not a fade) --
+    // letting VDP_drawImageEx push the image's bundled palette too would
+    // just be redundant with, and race, that.
+    VDP_drawImageEx(WINDOW, introBgFrames[0].image, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, BG_BASE_TILE),
+                     BG_TILE_X, BG_TILE_Y, FALSE, DMA);
 
     // INTRO_TOTAL_FRAMES split evenly across every image -- see this
     // block's own top comment. Floored at 4x BG_FADE_FRAMES so a very
@@ -135,21 +155,6 @@ static void startBgSlideshow(void)
     bgIndex = 0;
     bgFadingOut = FALSE;
 
-    // Low priority is enough on its own here (unlike a scheme that tried to
-    // put this sprite and the crawl text on the same rows): the VDP's
-    // fixed back-to-front layer order is low BG_B < low BG_A < low sprites
-    // < high BG_B < high BG_A < high sprites, so a low sprite already sits
-    // above low/blank BG_A -- the actual reason an earlier version of this
-    // scene didn't show the background at all was Genesis background
-    // planes having no per-pixel transparency: BG_A's blank tiles are
-    // solid opaque black, and BG_A always beats BG_B at matching priority,
-    // so the *entire* BG_A plane was blocking BG_B's starfield everywhere,
-    // all the time, regardless of where text was actually stamped. The fix
-    // is the screen split (see SPLIT_ROW_TILES) -- this sprite lives in
-    // the top half, which the crawl's BG_A content never reaches at all
-    // (masked off by the WINDOW plane there -- see intro_run()).
-    SPR_setPriority(bgSprite, FALSE);
-
     // Set instantly, NOT via PAL_fadePalette -- SGDK's async palette fade
     // is single global state (fadeR[]/fadeG[]/fadeB[]/fadeCounter etc. in
     // pal.c, not per-palette), so a fade started here would immediately
@@ -162,12 +167,12 @@ static void startBgSlideshow(void)
     PAL_setPalette(PAL1, introBgFrames[0].palette->data, DMA);
 }
 
-// Genesis hardware has no true crossfade between two different sprites (no
+// Genesis hardware has no true crossfade between two different images (no
 // alpha blending) -- this fades PAL1 to black over the slide's last
-// BG_FADE_FRAMES frames, swaps SPR_setDefinition() to the next image while
-// it's invisible (mid-black), then fades back up from black. Reads as a
-// clean fade-through-black transition rather than an instant swap, using
-// only the one dedicated palette slot this scene already has.
+// BG_FADE_FRAMES frames, redraws the WINDOW tilemap with the next image
+// while it's invisible (mid-black), then fades back up from black. Reads
+// as a clean fade-through-black transition rather than an instant swap,
+// using only the one dedicated palette slot this scene already has.
 static void updateBgSlideshow(void)
 {
     if (bgSlideTimer > BG_FADE_FRAMES)
@@ -190,7 +195,11 @@ static void updateBgSlideshow(void)
     }
 
     bgIndex = (bgIndex + 1) % BG_FRAME_COUNT;
-    SPR_setDefinition(bgSprite, introBgFrames[bgIndex].sprite);
+    // Same base tile index every time (see BG_BASE_TILE's own comment) --
+    // this overwrites the previous image's tiles in place rather than
+    // growing VRAM usage across the show.
+    VDP_drawImageEx(WINDOW, introBgFrames[bgIndex].image, TILE_ATTR_FULL(PAL1, FALSE, FALSE, FALSE, BG_BASE_TILE),
+                     BG_TILE_X, BG_TILE_Y, FALSE, DMA);
 
     u16 black[16] = {0};
     PAL_fadePalette(PAL1, black, introBgFrames[bgIndex].palette->data, BG_FADE_FRAMES, TRUE);
@@ -553,13 +562,6 @@ void intro_run(void)
         bgstarfield_update();
         updateBgSlideshow();
 
-        // Without this, the background sprite's position/definition/
-        // palette changes above never actually reach the VDP -- SGDK only
-        // pushes pending sprite state during SPR_update(), same as every
-        // per-frame call site elsewhere in this game (see main.c's own
-        // gameplay loop).
-        SPR_update();
-
         SYS_doVBlankProcess();
     }
 
@@ -568,15 +570,7 @@ void intro_run(void)
 
     PAL_fadeOutAll(STARFIELD_FADE_FRAMES / 2, FALSE);
 
-    SPR_releaseSprite(bgSprite);
-    // Without this, the release above never actually reaches the VDP's
-    // hardware sprite table -- same class of bug as SPR_addSpriteEx(...,0)
-    // earlier in this file, just on the way out instead of in. title_run()
-    // never creates any sprites of its own, so nothing would ever refresh
-    // that table afterward, leaving this scene's last slide visibly stuck
-    // on screen straight through the title screen.
-    SPR_update();
-
+    VDP_clearPlane(WINDOW, TRUE); // clears the last slide's tiles off the WINDOW plane -- see intro_run()'s own opening VDP_clearPlane(WINDOW, TRUE) comment
     VDP_clearPlane(BG_A, TRUE);
     VDP_clearPlane(BG_B, TRUE);
 }

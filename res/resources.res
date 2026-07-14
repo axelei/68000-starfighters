@@ -99,13 +99,22 @@ PALETTE palette_intro_crawl "gfx/intro_palette.png"
 // -derived from their own PNG, same pattern as the boss roster) since
 // intro.c swaps them one at a time onto a single dedicated hardware slot as
 // the slideshow advances, rather than needing them all loaded simultaneously.
-
+// Declared as IMAGE (drawn onto the WINDOW plane's tilemap, see intro.c),
+// not SPRITE -- a single sprite frame this large (filling most of the
+// screen's top half) hits two separate hardware ceilings rescomp enforces:
+// no dimension >=32 tiles, and no more than 16 internal hardware-sprite
+// pieces per frame (content-dependent, not just size -- a mostly-empty
+// image like the planet placeholder fits, but anything with content spread
+// across the frame, like the nebula/fleet placeholders, doesn't). A
+// background plane has neither limit, just ordinary VRAM tile budget,
+// which is generously free at this point since intro_run() runs before any
+// other tile-heavy asset (terrain, gameplay sprites, etc.) is loaded.
 PALETTE palette_intro_bg_planet "gfx/intro_bg_planet.png"
 PALETTE palette_intro_bg_nebula "gfx/intro_bg_nebula.png"
 PALETTE palette_intro_bg_fleet  "gfx/intro_bg_fleet.png"
-SPRITE spr_intro_bg_planet "gfx/intro_bg_planet.png" 8 8 BEST
-SPRITE spr_intro_bg_nebula "gfx/intro_bg_nebula.png" 8 8 BEST
-SPRITE spr_intro_bg_fleet  "gfx/intro_bg_fleet.png"  8 8 BEST
+IMAGE img_intro_bg_planet "gfx/intro_bg_planet.png"
+IMAGE img_intro_bg_nebula "gfx/intro_bg_nebula.png"
+IMAGE img_intro_bg_fleet  "gfx/intro_bg_fleet.png"
 
 // Title screen music (see title.c) -- played through the XGM2 Z80 driver,
 // loaded only while the title screen is up and unloaded again once Start is
