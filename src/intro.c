@@ -51,11 +51,6 @@
 
 #define STARFIELD_FADE_FRAMES REGION_PICK(180, 150) // ~3s
 
-// See intro_run()'s skip-handling comment: requires this many consecutive
-// frames of button input before treating it as an intentional skip, to
-// filter out a single-frame false positive rather than a real press.
-#define SKIP_HOLD_FRAMES 15 // ~0.25s
-
 // Raster sway across the whole crawl -- same per-line horizontal-scroll
 // mechanism as title.c's logo wobble, but a *linear* shear (a single
 // straight-line lean, like a sheet of paper tilted slightly) rather than a
@@ -510,20 +505,18 @@ void intro_run(void)
     // visible as earlier lines repeating instead of the crawl ending. This
     // condition alone is what's actually correct.
     //
-    u16 skipHoldTimer = 0;
+    // Edge-detected (press, not hold) -- the debounce loop above already
+    // guarantees prevJoy starts clear of any button held over from before
+    // boot, so the first real press here is genuinely fresh, not a stray
+    // carry-over.
+    u16 prevJoy = 0;
 
     while (TRUE)
     {
-        if (JOY_readJoypad(JOY_1) & BUTTON_ALL)
-        {
-            skipHoldTimer++;
-            if (skipHoldTimer >= SKIP_HOLD_FRAMES)
-                break;
-        }
-        else
-        {
-            skipHoldTimer = 0;
-        }
+        u16 joy = JOY_readJoypad(JOY_1);
+        if ((joy & BUTTON_ALL) && !(prevJoy & BUTTON_ALL))
+            break;
+        prevJoy = joy;
 
         // Un-negated (unlike terrain.c's VDP_setVerticalScroll(BG_A, -...)):
         // increasing V shows lower (higher plane-row) content at the top of
