@@ -20,8 +20,8 @@ Enemy enemies[MAX_ENEMIES];
 #define ENTER_DURATION REGION_PICK(90, 75) // frames (~1.5s)
 #define HIT_FLASH_FRAMES 3
 
-#define HP_BEE     10
-#define HP_SPECIAL 10
+#define HP_BEE     5
+#define HP_SPECIAL 5
 #define HP_BIG     45
 #define HP_WAVER   1
 
