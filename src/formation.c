@@ -4,6 +4,7 @@
 #include "terrain.h"
 #include "player.h"
 #include "boss.h"
+#include "music.h"
 #include "waves_generated.h"
 
 // Every 5th wave slot is a boss encounter instead of the normal
@@ -122,6 +123,11 @@ static void beginInterwave(void)
 {
     inInterwave = TRUE;
     enemy_spawnWaverFormation(ENEMY_KIND_WAVER_A + (waveIndex % WAVER_KIND_COUNT));
+
+    // Rotates the ingame track once per wave (see music.h) -- this is the
+    // one place every non-boss wave slot passes through, including the
+    // very first (called from formation_init() via beginEncounter() below).
+    music_startIngame();
 }
 
 // Every BOSS_WAVE_INTERVAL-th wave slot (3, 6, 9...) spawns a boss

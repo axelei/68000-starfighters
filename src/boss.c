@@ -7,6 +7,7 @@
 #include "score.h"
 #include "enemy.h"
 #include "turret.h"
+#include "music.h"
 #include "boss_patterns_generated.h"
 #include "boss_mask_generated.h"
 
@@ -352,6 +353,11 @@ void boss_begin(BossKind kind)
     const BossDef *def = &bossDefs[kind];
 
     bossActive = TRUE;
+
+    // Overrides whatever ingame track music_startIngame() picked -- see
+    // formation.c, which resumes it via music_resumeIngame() once this
+    // encounter ends.
+    music_startBoss();
 
     // Reclaim hardware sprite slots from the two pools guaranteed idle
     // during a boss fight (see their own comments for why this is safe).

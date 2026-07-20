@@ -116,11 +116,18 @@ IMAGE img_intro_bg_planet "gfx/intro_bg_planet.png"
 IMAGE img_intro_bg_nebula "gfx/intro_bg_nebula.png"
 IMAGE img_intro_bg_fleet  "gfx/intro_bg_fleet.png"
 
-// Title screen music (see title.c) -- played through the XGM2 Z80 driver,
-// loaded only while the title screen is up and unloaded again once Start is
-// pressed, so it never contends with sfx.c's direct PSG writes during
-// actual gameplay (see title.c's comment on this).
+// Background music, all played through the XGM2 Z80 driver (see title.c,
+// intro.c, music.c). Every track here is pure YM2612 FM data -- none of
+// them touch the SN76489 PSG chip (verified in each .vgm's own header) --
+// so they can play concurrently with sfx.c's direct 68000-side PSG writes
+// for gameplay SFX without any channel contention, even once music keeps
+// running throughout an entire game rather than just the title screen.
 XGM2 title_music "music/title.vgm"
+XGM2 intro_music "music/intro.vgm"
+XGM2 boss_music     "music/boss/fairlight - placid_vision.vgm"
+XGM2 ingame_music_0 "music/ingame/bodykiss.vgm"
+XGM2 ingame_music_1 "music/ingame/starworx.vgm"
+XGM2 ingame_music_2 "music/ingame/trust elephant.vgm"
 
 // -- tilesets for scrolling backgrounds (BG_A = terrain, BG_B = starfield)
 // opt=NONE keeps every tile distinct/in-order, since terrain.c indexes

@@ -446,6 +446,18 @@ void intro_run(void)
     // partially-drawn content before the first real frame.
     VDP_setEnable(FALSE);
 
+    // Unlike title_run() (which starts this driver load non-blocking and
+    // polls readiness across several already-visible animation frames, so
+    // the logo isn't stuck undistorted while it boots), intro_run() has the
+    // display off for its whole setup phase regardless -- so a blocking
+    // wait here (the Z80 driver takes several frames to boot) costs nothing
+    // visible. This is also the very first XGM2 driver load each power-on,
+    // before title_run() ever runs; title_run()'s own Z80_loadDriver() call
+    // later is a no-op against the same already-loaded driver (see
+    // z80_ctrl.c's Z80_loadDriver()).
+    Z80_loadDriver(Z80_DRIVER_XGM2, TRUE);
+    XGM2_play(intro_music);
+
     // Supplies the actual ink color the crawl draws with -- the reused
     // system font tiles only carry pixel *indices* (1=opaque black
     // backing, 2=ink), not colors of their own; whatever's loaded onto
@@ -561,6 +573,19 @@ void intro_run(void)
     VDP_setScrollingMode(HSCROLL_PLANE, VSCROLL_PLANE);
     VDP_setHorizontalScroll(BG_A, 0);
 
+    // Deliberately NOT faded out here (unlike title_run()'s own end-of-
+    // screen XGM2_fadeOutAndStop()): title_run() runs immediately next (see
+    // main.c) and calls XGM2_play(title_music) on its very first wobble
+    // frame (the Z80 driver is already loaded/ready by then, so that check
+    // passes instantly) -- a fade-out queued here would still be mid-
+    // countdown at that point, and its deferred auto-stop firing a few
+    // frames later was silencing title_music right after it started
+    // (reproducible on the very first title screen each power-on; every
+    // later return to the title screen never hits this because gameplay's
+    // own music is simply left playing with no fade/stop of its own, so
+    // XGM2_play(title_music) there is overriding a steady-state song
+    // instead of racing a pending stop). Simply leaving intro_music playing
+    // right up until title_run() cuts it over avoids the race entirely.
     PAL_fadeOutAll(STARFIELD_FADE_FRAMES / 2, FALSE);
 
     VDP_clearPlane(WINDOW, TRUE); // clears the last slide's tiles off the WINDOW plane -- see intro_run()'s own opening VDP_clearPlane(WINDOW, TRUE) comment

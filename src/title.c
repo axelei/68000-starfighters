@@ -189,16 +189,19 @@ void title_run(void)
     drawTitleScreen();
     bgstarfield_start(TITLE_STARFIELD_FADE_FRAMES);
 
-    // Loaded once here and left running -- see main.c/sfx.c if in-game music
-    // is added later, since sfx.c currently writes directly to the PSG from
-    // the 68000 side for its SFX (with no Z80 sound driver active, SGDK
-    // boots with Z80_DRIVER_NULL) and that stops being true once XGM2 stays
-    // loaded into gameplay. Non-blocking load (waitReady=FALSE): the driver
-    // takes several frames to boot, and waiting for it here -- before
-    // playTitleWobble() ever runs -- was showing the logo undistorted for
-    // those frames instead of starting the wobble at full deformation right
-    // away. playTitleWobble() itself polls Z80_isDriverReady() and starts
-    // the music as soon as it's up, once wobble is already underway.
+    // Loaded once here and left running through gameplay (see music.c) --
+    // safe alongside sfx.c's own direct 68000-side PSG writes because every
+    // XGM2 track in this game (see resources.res) is pure YM2612 FM data,
+    // never touching the PSG chip sfx.c uses. Non-blocking load
+    // (waitReady=FALSE): the driver takes several frames to boot, and
+    // waiting for it here -- before playTitleWobble() ever runs -- was
+    // showing the logo undistorted for those frames instead of starting the
+    // wobble at full deformation right away. playTitleWobble() itself polls
+    // Z80_isDriverReady() and starts the music as soon as it's up, once
+    // wobble is already underway. In practice this call is already a no-op
+    // by the time it runs on the very first title screen of a session --
+    // intro_run() (see intro.c) loads the same driver first, blocking,
+    // before title_run() ever gets here.
     Z80_loadDriver(Z80_DRIVER_XGM2, FALSE);
 
     playTitleWobble();
