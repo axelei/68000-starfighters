@@ -168,7 +168,21 @@ static void drawMainMenuStatic(void)
     VDP_drawText("START: SELECT   B: EXIT", 8, HINT2_Y);
 }
 
-#define SOUND_TEST_ENTRY_COUNT 6
+// One music entry per XGM2 track in resources.res (see music.c) -- kept in
+// its own table (rather than a switch case per track, like the SFX entries
+// below) so playSoundTestEntry() can toggle any of them the same way.
+static const u8 *const musicEntries[] = {
+    title_music,
+    intro_music,
+    boss_music,
+    ingame_music_0,
+    ingame_music_1,
+    ingame_music_2,
+};
+#define MUSIC_ENTRY_COUNT (sizeof(musicEntries) / sizeof(musicEntries[0]))
+#define SFX_ENTRY_COUNT 5
+#define SOUND_TEST_ENTRY_COUNT (MUSIC_ENTRY_COUNT + SFX_ENTRY_COUNT)
+
 #define SOUND_TEST_TITLE_Y  3
 #define SOUND_TEST_VALUE_X   9
 #define SOUND_TEST_VALUE_Y  12
@@ -177,6 +191,11 @@ static void drawMainMenuStatic(void)
 
 static const char *const soundTestLabels[SOUND_TEST_ENTRY_COUNT] = {
     "MUSIC: TITLE THEME",
+    "MUSIC: INTRO THEME",
+    "MUSIC: BOSS THEME",
+    "MUSIC: INGAME 1",
+    "MUSIC: INGAME 2",
+    "MUSIC: INGAME 3",
     "SFX: SHOOT",
     "SFX: EXPLOSION",
     "SFX: POWERUP",
@@ -188,24 +207,41 @@ static const char *const soundTestLabels[SOUND_TEST_ENTRY_COUNT] = {
 // options.c setting -- not reset back to entry 0 each time.
 static u8 soundTestIndex;
 
+// Which musicEntries[] index (if any) is the one currently playing -- unlike
+// the single-track era this replaces, XGM2_isPlaying() alone can't tell
+// entries apart, so this is what lets pressing A on a *different* music
+// entry switch tracks instead of just stopping whichever one was already
+// playing.
+static s8 playingMusicIndex = -1;
+
 static void playSoundTestEntry(u8 index)
 {
-    switch (index)
+    if (index < MUSIC_ENTRY_COUNT)
     {
-        case 0:
-            // The only music track there is -- toggles rather than always
-            // restarting, so tapping A again stops it instead of always
-            // retriggering from the top.
-            if (XGM2_isPlaying())
-                XGM2_stop();
-            else
-                XGM2_play(title_music);
-            break;
-        case 1: sfx_play_shoot();           break;
-        case 2: sfx_play_explosion();       break;
-        case 3: sfx_play_powerup();         break;
-        case 4: sfx_play_bossDeathScream(); break;
-        case 5: sfx_play_extraLife();       break;
+        // Toggles the selected entry rather than always restarting, so
+        // tapping A again on the same entry stops it instead of
+        // retriggering from the top -- picking a different entry and
+        // pressing A always (re)starts that one instead.
+        if (playingMusicIndex == (s8) index && XGM2_isPlaying())
+        {
+            XGM2_stop();
+            playingMusicIndex = -1;
+        }
+        else
+        {
+            XGM2_play(musicEntries[index]);
+            playingMusicIndex = (s8) index;
+        }
+        return;
+    }
+
+    switch (index - MUSIC_ENTRY_COUNT)
+    {
+        case 0: sfx_play_shoot();           break;
+        case 1: sfx_play_explosion();       break;
+        case 2: sfx_play_powerup();         break;
+        case 3: sfx_play_bossDeathScream(); break;
+        case 4: sfx_play_extraLife();       break;
     }
 }
 
