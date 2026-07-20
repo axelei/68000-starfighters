@@ -79,14 +79,14 @@ troubleshooting.
 
 All music converted from Amiga MOD to VGM by the author. Original aknowledgements:
 
-| Used for | File | Track | Composer               |
-| --- | --- | --- |------------------------|
-| Intro crawl | `res/music/intro.vgm` | lost-in-time | ?                      |
-| Title screen | `res/music/title.vgm` | spice it up | jester of sanity       |
-| Boss encounters | `res/music/boss/fairlight - placid_vision.vgm` | placid_vision | fairlight              |
-| Ingame (wave 1 of the rotation) | `res/music/ingame/bodykiss.vgm` | bodykiss | ?                    |
-| Ingame (wave 2 of the rotation) | `res/music/ingame/starworx.vgm` | starworx | 4mat (Mathew Simmonds) |
-| Ingame (wave 3 of the rotation) | `res/music/ingame/trust elephant.vgm` | thrust-elephant | ?                    |
+| Used for | File | Track           | Composer                 |
+| --- | --- |-----------------|--------------------------|
+| Intro crawl | `res/music/intro.vgm` | Lost in Time    | The Judge (Jolyon Myers) |
+| Title screen | `res/music/title.vgm` | Spice it up     | Jester of Sanity         |
+| Boss encounters | `res/music/boss/fairlight - placid_vision.vgm` | placid_vision   | Fairlight                |
+| Ingame (wave 1 of the rotation) | `res/music/ingame/bodykiss.vgm` | bodykiss        | ?                        |
+| Ingame (wave 2 of the rotation) | `res/music/ingame/starworx.vgm` | starworx        | 4mat (Mathew Simmonds)   |
+| Ingame (wave 3 of the rotation) | `res/music/ingame/trust elephant.vgm` | thrust-elephant | ?                        |
 
 ## Status
 
