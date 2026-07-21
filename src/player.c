@@ -205,6 +205,7 @@ void player_kill(void)
 
     explosion_spawnAt(F16_toInt(player.x) + PLAYER_SPR_W / 2, F16_toInt(player.y) + PLAYER_SPR_H / 2);
     sfx_play_explosion();
+    sfx_play_playerExplosionSample();
 
     player.alive = FALSE;
     SPR_setVisibility(player.sprite, HIDDEN);

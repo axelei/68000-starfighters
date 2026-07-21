@@ -25,6 +25,14 @@ void sfx_play_extraLife(void);
 // sfx_play_explosion() (different PSG channel, no conflict).
 void sfx_play_bossDeathScream(void);
 
+// Sampled (WAV, via the XGM2 driver's PCM channels) explosion sounds, on
+// top of whichever PSG effect already plays at that moment (sfx_play_
+// explosion() for the player, sfx_play_bossDeathScream() for the boss) --
+// different hardware entirely (PCM channels, not the PSG's own 4 channels),
+// so no conflict either way.
+void sfx_play_bossExplosionSample(void);
+void sfx_play_playerExplosionSample(void);
+
 // Immediately silences every channel and cancels any in-progress sequence
 // (called when leaving the game-over screen back to the title, so a sound
 // that was mid-playback doesn't keep running into the title screen).

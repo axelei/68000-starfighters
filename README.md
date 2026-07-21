@@ -87,6 +87,7 @@ All music converted from Amiga MOD to VGM by the author. Original aknowledgement
 | Ingame (wave 1 of the rotation) | `res/music/ingame/bodykiss.vgm` | bodykiss        | ?                        |
 | Ingame (wave 2 of the rotation) | `res/music/ingame/starworx.vgm` | starworx        | 4mat (Mathew Simmonds)   |
 | Ingame (wave 3 of the rotation) | `res/music/ingame/trust elephant.vgm` | thrust-elephant | ?                        |
+| Game over | `res/music/gameover.vgm` | end-tune | ?                        |
 
 ## Status
 

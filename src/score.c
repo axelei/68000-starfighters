@@ -4,6 +4,7 @@
 #include "formation.h"
 #include "options.h"
 #include "highscore.h"
+#include "music.h"
 #include <string.h>
 
 // HUD lives in a static side panel (right edge of the screen, out of the
@@ -657,6 +658,12 @@ void score_hidePause(void)
 void score_showGameOver(void)
 {
     char buf[12];
+
+    // Overrides whatever ingame/boss track was playing -- see main.c, which
+    // calls this once per game (gameOverShown latches), and title_run(),
+    // which cuts over to title_music the same way once the player returns
+    // to the title screen.
+    music_startGameOver();
 
     // Band the WINDOW plane's top rows (in addition to -- not instead of --
     // the side panel's HPos, still active): the VDP ORs the window's H and V

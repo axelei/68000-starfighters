@@ -1,6 +1,14 @@
 #include "music.h"
 #include "resources.h"
 
+// See music.h's own comment -- 100 is XGM2's full-scale default.
+#define MUSIC_FM_VOLUME 75
+
+void music_init(void)
+{
+    XGM2_setFMVolume(MUSIC_FM_VOLUME);
+}
+
 // Rotation order is fixed and arbitrary -- only its determinism (not which
 // track happens to be first) matters, see music.h's own comment.
 static const u8 *const ingameTracks[] = {
@@ -25,4 +33,9 @@ void music_startIngame(void)
 void music_startBoss(void)
 {
     XGM2_play(boss_music);
+}
+
+void music_startGameOver(void)
+{
+    XGM2_play(gameover_music);
 }

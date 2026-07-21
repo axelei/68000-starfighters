@@ -581,6 +581,7 @@ AABB boss_weakSpotBounds(u16 index)
 static void triggerDeath(void)
 {
     sfx_play_bossDeathScream();
+    sfx_play_bossExplosionSample();
 
     // The boss is defeated -- its still-in-flight homing bullets shouldn't
     // remain a live hazard through the death-scream/explosion sequence (or

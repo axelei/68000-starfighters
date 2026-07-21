@@ -1,4 +1,5 @@
 #include "sfx.h"
+#include "resources.h"
 
 // Placeholder sound effects: no compiled audio resources, no XGM driver --
 // just short hand-authored step sequences written directly to the PSG's
@@ -134,6 +135,16 @@ void sfx_play_bossDeathScream(void)
 void sfx_play_extraLife(void)
 {
     startChannel(&powerupState, extraLifeSteps, 5);
+}
+
+void sfx_play_bossExplosionSample(void)
+{
+    XGM2_playPCM(boss_explosion_sfx, sizeof(boss_explosion_sfx), SOUND_PCM_CH_AUTO);
+}
+
+void sfx_play_playerExplosionSample(void)
+{
+    XGM2_playPCM(player_explosion_sfx, sizeof(player_explosion_sfx), SOUND_PCM_CH_AUTO);
 }
 
 static void updateChannel(SfxChannelState *cs)

@@ -1,6 +1,7 @@
 #include "intro.h"
 #include "resources.h"
 #include "bgstarfield.h"
+#include "music.h"
 #include "intro_crawl_generated.h"
 
 // Crawl text is drawn at runtime (word-wrapped and stamped onto the
@@ -456,6 +457,7 @@ void intro_run(void)
     // later is a no-op against the same already-loaded driver (see
     // z80_ctrl.c's Z80_loadDriver()).
     Z80_loadDriver(Z80_DRIVER_XGM2, TRUE);
+    music_init();
     XGM2_play(intro_music);
 
     // Supplies the actual ink color the crawl draws with -- the reused

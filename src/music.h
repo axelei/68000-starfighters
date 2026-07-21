@@ -3,6 +3,15 @@
 
 #include "game.h"
 
+// Turns background music down a bit relative to XGM2's own full-scale
+// default, so it doesn't drown out sfx.c's effects (both the PSG synth ones
+// and the newer PCM samples -- see sfx_play_bossExplosionSample()/
+// sfx_play_playerExplosionSample() -- which have no independent volume
+// control of their own on the XGM2 driver). Call exactly once, right after
+// the XGM2 driver first loads (see intro.c) -- the setting persists across
+// every later XGM2_play() this session, so it never needs repeating.
+void music_init(void);
+
 // Starts this wave's ingame background track. Rotates deterministically
 // through the ingame roster (music.c's ingameTracks[]) one step per call
 // rather than picking randomly, so consecutive waves vary in a fixed,
@@ -22,5 +31,9 @@ void music_startIngame(void);
 // site) so a future second/third boss track can rotate the same way
 // music_startIngame() does without touching boss.c.
 void music_startBoss(void);
+
+// Starts the game-over track -- see score.c's score_showGameOver(). Only
+// one game-over track exists today, same reasoning as music_startBoss().
+void music_startGameOver(void);
 
 #endif // MUSIC_H

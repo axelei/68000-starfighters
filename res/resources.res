@@ -128,6 +128,14 @@ XGM2 boss_music     "music/boss/fairlight - placid_vision.vgm"
 XGM2 ingame_music_0 "music/ingame/bodykiss.vgm"
 XGM2 ingame_music_1 "music/ingame/starworx.vgm"
 XGM2 ingame_music_2 "music/ingame/trust elephant.vgm"
+XGM2 gameover_music "music/gameover.vgm"
+
+// One-shot PCM samples (see sfx.c) played through the same XGM2 driver, on
+// its PCM channels rather than the PSG -- unlike every other sfx.c effect
+// (procedural PSG synth), these need real sampled audio, and the XGM2
+// driver already has to be loaded for music anyway.
+WAV boss_explosion_sfx   "sfx/boss_explosion.wav"   XGM2
+WAV player_explosion_sfx "sfx/player_explosion.wav" XGM2
 
 // -- tilesets for scrolling backgrounds (BG_A = terrain, BG_B = starfield)
 // opt=NONE keeps every tile distinct/in-order, since terrain.c indexes

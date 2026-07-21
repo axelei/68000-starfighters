@@ -217,7 +217,24 @@ int main(bool hardReset)
             SYS_doVBlankProcess();
         }
 
+        // Fades the game-over music's volume down over the same 30 frames
+        // as the screen fade below, WITHOUT XGM2_fadeOutAndStop()'s built-in
+        // auto-stop: that auto-stop is a Z80-side command deferred until the
+        // fade's own countdown reaches zero, and title_run() -- the very
+        // next thing this loop does -- calls XGM2_play(title_music)
+        // immediately (the Z80 driver's already loaded/ready, so nothing
+        // delays it). A deferred auto-stop still in flight at that point
+        // silences title_music right after it starts (this is exactly the
+        // bug intro.c's own music fade-out used to cause going into the
+        // very first title screen -- see its own comment). Explicitly
+        // calling XGM2_stop() ourselves, only once the blocking
+        // PAL_fadeOutAll() below has actually finished pumping all 30
+        // frames, guarantees the volume fade is genuinely done and the stop
+        // fires synchronously right here -- nothing left pending to race
+        // title_run()'s XGM2_play().
+        XGM2_fadeOut(30);
         PAL_fadeOutAll(30, FALSE);
+        XGM2_stop();
 
         // Otherwise whatever sound effect was mid-playback (shoot,
         // explosion...) keeps running right into the title screen.

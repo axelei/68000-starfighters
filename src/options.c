@@ -178,6 +178,7 @@ static const u8 *const musicEntries[] = {
     ingame_music_0,
     ingame_music_1,
     ingame_music_2,
+    gameover_music,
 };
 #define MUSIC_ENTRY_COUNT (sizeof(musicEntries) / sizeof(musicEntries[0]))
 #define SFX_ENTRY_COUNT 5
@@ -186,7 +187,7 @@ static const u8 *const musicEntries[] = {
 #define SOUND_TEST_TITLE_Y  3
 #define SOUND_TEST_VALUE_X   9
 #define SOUND_TEST_VALUE_Y  12
-#define SOUND_TEST_VALUE_LEN 20 // longest label, "MUSIC: TITLE THEME", is 18 chars
+#define SOUND_TEST_VALUE_LEN 21 // longest label, "MUSIC: GAMEOVER THEME", is 21 chars
 #define SOUND_TEST_HINT_Y   16
 
 static const char *const soundTestLabels[SOUND_TEST_ENTRY_COUNT] = {
@@ -196,6 +197,7 @@ static const char *const soundTestLabels[SOUND_TEST_ENTRY_COUNT] = {
     "MUSIC: INGAME 1",
     "MUSIC: INGAME 2",
     "MUSIC: INGAME 3",
+    "MUSIC: GAMEOVER THEME",
     "SFX: SHOOT",
     "SFX: EXPLOSION",
     "SFX: POWERUP",
