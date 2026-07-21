@@ -614,6 +614,7 @@ void boss_hitWeakSpot(u16 index, s16 damage)
         ws->destroyed = TRUE;
         ws->hitFlashTimer = 0;
         SPR_setVRAMTileIndex(ws->sprite, weakSpotDestroyedTile);
+        sfx_play_playerExplosionSample();
 
         bool allDestroyed = TRUE;
         for (u16 i = 0; i < bossDefs[currentKind].weakSpotCount; i++)

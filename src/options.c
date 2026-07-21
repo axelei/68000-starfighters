@@ -181,7 +181,7 @@ static const u8 *const musicEntries[] = {
     gameover_music,
 };
 #define MUSIC_ENTRY_COUNT (sizeof(musicEntries) / sizeof(musicEntries[0]))
-#define SFX_ENTRY_COUNT 5
+#define SFX_ENTRY_COUNT 7
 #define SOUND_TEST_ENTRY_COUNT (MUSIC_ENTRY_COUNT + SFX_ENTRY_COUNT)
 
 #define SOUND_TEST_TITLE_Y  3
@@ -203,6 +203,8 @@ static const char *const soundTestLabels[SOUND_TEST_ENTRY_COUNT] = {
     "SFX: POWERUP",
     "SFX: BOSS SCREAM",
     "SFX: EXTRA LIFE",
+    "SFX: BOSS EXPLOSION",
+    "SFX: PLAYER EXPLOSION",
 };
 
 // Persists across visits within this power-on session, like every other
@@ -242,8 +244,10 @@ static void playSoundTestEntry(u8 index)
         case 0: sfx_play_shoot();           break;
         case 1: sfx_play_explosion();       break;
         case 2: sfx_play_powerup();         break;
-        case 3: sfx_play_bossDeathScream(); break;
-        case 4: sfx_play_extraLife();       break;
+        case 3: sfx_play_bossDeathScream();        break;
+        case 4: sfx_play_extraLife();              break;
+        case 5: sfx_play_bossExplosionSample();     break;
+        case 6: sfx_play_playerExplosionSample();   break;
     }
 }
 
