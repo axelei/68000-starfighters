@@ -202,7 +202,7 @@ void title_run(void)
     // by the time it runs on the very first title screen of a session --
     // intro_run() (see intro.c) loads the same driver first, blocking,
     // before title_run() ever gets here.
-    Z80_loadDriver(Z80_DRIVER_XGM2, FALSE);
+    XGM2_loadDriver(FALSE);
 
     playTitleWobble();
 

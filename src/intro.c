@@ -453,10 +453,10 @@ void intro_run(void)
     // display off for its whole setup phase regardless -- so a blocking
     // wait here (the Z80 driver takes several frames to boot) costs nothing
     // visible. This is also the very first XGM2 driver load each power-on,
-    // before title_run() ever runs; title_run()'s own Z80_loadDriver() call
+    // before title_run() ever runs; title_run()'s own XGM2_loadDriver() call
     // later is a no-op against the same already-loaded driver (see
-    // z80_ctrl.c's Z80_loadDriver()).
-    Z80_loadDriver(Z80_DRIVER_XGM2, TRUE);
+    // xgm2.c's XGM2_loadDriver()).
+    XGM2_loadDriver(TRUE);
     music_init();
     XGM2_play(intro_music);
 
