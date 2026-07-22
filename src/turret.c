@@ -204,8 +204,19 @@ static void trySpawn(void)
         t->y = FIX16(y);
 
         if (t->sprite == NULL)
+        {
             t->sprite = SPR_addSpriteEx(&spr_turret, x, y,
                                          TILE_ATTR_FULL(PAL_ENEMY, FALSE, FALSE, FALSE, idleTile), 0);
+            // See enemy.c's enemy_spawn() for why this NULL check matters:
+            // SGDK's own sprite-object pool is hard-capped at 80, and a
+            // failed allocation here would otherwise leave this turret
+            // active/killable in game logic while permanently invisible.
+            if (t->sprite == NULL)
+            {
+                t->active = FALSE;
+                return;
+            }
+        }
         else
             SPR_setVRAMTileIndex(t->sprite, idleTile);
 

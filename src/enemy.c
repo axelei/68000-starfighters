@@ -412,8 +412,26 @@ Enemy *enemy_spawn(EnemyKind kind, s16 startX, s16 startY, s16 slotX, s16 slotY,
             : randomCooldown(BIG_FIRE_COOLDOWN_MIN, BIG_FIRE_COOLDOWN_RANGE);
 
         if (e->sprite == NULL)
+        {
             e->sprite = SPR_addSpriteEx(spriteDefForKind(kind), startX, startY,
                                          TILE_ATTR_FULL(PAL_ENEMY, FALSE, FALSE, FALSE, normalTile[kind]), 0);
+            // SGDK's own sprite-object pool is a hard-capped 80 (see game.h's
+            // pool-size comment) -- if every one of those is already spoken
+            // for, this returns NULL *before* ever linking the new sprite
+            // into the chain SPR_update() walks each frame. Every SPR_*()
+            // call below dereferences e->sprite with no NULL check of its
+            // own (a silent no-op/garbage-read in a release build, not a
+            // crash), so without this bail-out the enemy would stay fully
+            // active/killable in game logic forever while never actually
+            // getting drawn -- exactly the "invisible but still alive"
+            // symptom this pool is sized to avoid, kept here as a hard
+            // backstop in case it's ever hit anyway.
+            if (e->sprite == NULL)
+            {
+                e->active = FALSE;
+                continue;
+            }
+        }
         else
         {
             // This pool slot may have last held a different-sized kind
