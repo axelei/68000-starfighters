@@ -120,8 +120,19 @@ static Bullet *spawn(Bullet *pool, u16 count, const SpriteDefinition *def, u16 p
         b->retargetTimer = 0;
         b->flashTimer = 0;
         if (b->sprite == NULL)
+        {
             b->sprite = SPR_addSpriteEx(def, F16_toInt(x), F16_toInt(y),
                                          TILE_ATTR_FULL(pal, FALSE, FALSE, FALSE, vramTile), 0);
+            // See enemy.c's enemy_spawn() for why this NULL check matters:
+            // SGDK's own sprite-object pool is hard-capped at 80, and a
+            // failed allocation here would otherwise leave this bullet
+            // active/damaging in game logic while permanently invisible.
+            if (b->sprite == NULL)
+            {
+                b->active = FALSE;
+                continue;
+            }
+        }
         else
         {
             // This enemyBullets slot may have last held a different-sized

@@ -57,6 +57,13 @@ static void respawn(void)
     player.state = PLAYER_ALIVE;
     player.alive = TRUE;
 
+    // player.sprite can be NULL if player_init()'s SPR_addSprite() ever lost
+    // the race for SGDK's hard-capped 80-sprite pool (see enemy.c's
+    // enemy_spawn() for the full reasoning) -- guarded here since every
+    // respawn (not just the first) routes through this function.
+    if (player.sprite == NULL)
+        return;
+
     SPR_setPosition(player.sprite, F16_toInt(player.x), F16_toInt(player.y));
     SPR_setVisibility(player.sprite, VISIBLE);
     SPR_setAnim(player.sprite, ANIM_NEUTRAL);
@@ -184,6 +191,14 @@ void player_update(u16 joyState)
     clampToPlayArea();
     handleFire(joyState);
     handlePowerupTimer();
+
+    // See respawn()'s own comment -- player.sprite can be NULL if its
+    // creation ever lost the race for SGDK's sprite pool. Movement/firing/
+    // powerup logic above still needs to run either way; only the sprite
+    // touches below (all of which assume a real handle) are skipped.
+    if (player.sprite == NULL)
+        return;
+
     updateInvulnerability();
     updateLeanAnim(joyState);
 
@@ -208,7 +223,8 @@ void player_kill(void)
     sfx_play_playerExplosionSample();
 
     player.alive = FALSE;
-    SPR_setVisibility(player.sprite, HIDDEN);
+    if (player.sprite != NULL)
+        SPR_setVisibility(player.sprite, HIDDEN);
 
     if (player.lives > 0)
         player.lives--;
