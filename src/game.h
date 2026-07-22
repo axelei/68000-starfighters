@@ -44,13 +44,34 @@
 #define SCREEN_W 320
 #define SCREEN_H 224
 
-#define MAX_PLAYER_BULLETS 16
-#define MAX_ENEMY_BULLETS  24
-// Comfortable headroom above the biggest wave/inter-wave batch (see
-// enemy.h's WAVER_SUBGROUP_SIZE) -- batches are spawned one at a time,
-// reusing freed slots, specifically to stay well under the Genesis's
-// 80-ever-allocated-sprite-object limit (see WAVER_SUBGROUP_COUNT's comment).
-#define MAX_ENEMIES 48
+// Every pool below (plus explosion.h's MAX_EXPLOSIONS, turret.h's
+// MAX_TURRETS, score.c's life icons/GAME OVER letters, player.c's own ship)
+// hands out SGDK Sprite objects that are never SPR_released -- once a pool
+// slot is used, its handle is kept and reused (SPR_setDefinition()) for the
+// rest of the session, never given back (see enemy.h's top comment for the
+// one exception -- turrets/enemies during a boss fight -- and its own
+// account of this exact ceiling getting hit before, with bullets silently
+// failing to render). SGDK hard-caps the WHOLE GAME to 80 *ever-allocated*
+// sprite objects at once (sprite_eng.c's MAX_SPRITE -- a real Genesis
+// hardware limit, not a tunable), and none of these pools' sizes were ever
+// picked with the *sum* across every pool in mind, only each in isolation.
+// Add up generous headroom in several of them at once (as bullets/
+// explosions/enemies all eventually will, given a long enough session) and
+// the total quietly sails past 80 -- from then on, whichever pool tries to
+// allocate a fresh slot next just doesn't get one, and that entity stays
+// logically alive/active but permanently unrendered until it's killed or
+// times out (exactly what made turrets/enemies "invisible" after several
+// waves). These sizes are trimmed to real gameplay needs (see waves.txt via
+// waves_generated.h for MAX_ENEMIES; the rest were simply over-provisioned)
+// so the grand total across every pool stays safely under 80.
+#define MAX_PLAYER_BULLETS 10
+#define MAX_ENEMY_BULLETS  10
+// Covers the biggest wave (see waves_generated.h -- wave 10's 4 BIG + 4x6
+// grid = 28) with a couple of spare slots, not the inter-wave waver batch
+// (WAVER_SUBGROUP_SIZE/SIDE_DIVE_SUBGROUP_SIZE in enemy.h, both well under
+// this already) -- see this block's own comment on why "headroom" isn't
+// free here.
+#define MAX_ENEMIES 30
 #define MAX_POWERUPS        4
 
 // Terrain scroll speed, fixed-point pixels/frame (see terrain.c). Shared

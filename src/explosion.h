@@ -3,7 +3,10 @@
 
 #include "game.h"
 
-#define MAX_EXPLOSIONS 12
+// See game.h's own comment on MAX_PLAYER_BULLETS/MAX_ENEMY_BULLETS/
+// MAX_ENEMIES -- this pool's Sprite handles are never released either, and
+// its size counts toward that same whole-game 80-sprite-object ceiling.
+#define MAX_EXPLOSIONS 8
 
 void explosions_init(void);
 void explosions_update(void);
