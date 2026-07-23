@@ -4,12 +4,18 @@
 #include "game.h"
 
 // See game.h's own comment on MAX_PLAYER_BULLETS/MAX_ENEMY_BULLETS/
-// MAX_ENEMIES -- this pool's Sprite handles are never released either, and
-// its size counts toward that same whole-game 80-sprite-object ceiling.
-#define MAX_EXPLOSIONS 8
+// MAX_ENEMIES -- this pool's Sprite handles are released as soon as an
+// explosion finishes (explosions_releaseIdleSprites(), called every frame
+// from main.c), so its size is sized against actual observed concurrent
+// usage rather than the whole-game ever-allocated ceiling.
+#define MAX_EXPLOSIONS 12
 
 void explosions_init(void);
 void explosions_update(void);
+
+// Releases (SPR_releaseSprite) every currently-inactive explosion's sprite
+// handle back to SGDK's pool -- see bullet.h's bullets_releaseIdleSprites().
+void explosions_releaseIdleSprites(void);
 
 // Nulls every cached sprite handle -- boot-time only (see main.c and
 // bullet.h's bullets_resetHandles(), same reasoning); not part of the

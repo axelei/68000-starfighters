@@ -359,21 +359,18 @@ void boss_begin(BossKind kind)
     // encounter ends.
     music_startBoss();
 
-    // A turret is its own pool, independent of the "enemies" formation --
-    // it can still be mid-flight (spawned late in the previous wave, not
-    // yet scrolled off) at the exact moment the last regular enemy dies
-    // and the wave-clear delay elapses into this boss encounter. Force it
-    // inactive first so turrets_releaseIdleSprites() right below can
-    // actually reclaim every turret's sprite handle, not just whichever
-    // ones already happened to be idle -- restoring the "turrets are never
-    // active during a boss encounter" invariant that pool's comment
-    // otherwise assumes.
-    turrets_hideAll();
-
-    // Reclaim hardware sprite slots from the two pools guaranteed idle
-    // during a boss fight (see their own comments for why this is safe).
+    // Turrets are deliberately left alone here -- a turret still mid-flight
+    // (spawned late in the previous wave, not yet scrolled off) keeps
+    // fighting straight into the boss encounter instead of being yanked
+    // off screen. Its sprite slot is reclaimed the ordinary way, once it
+    // dies or scrolls off, by turrets_releaseIdleSprites() (called every
+    // frame from main.c).
+    //
+    // Enemies are different: formation.c already guarantees
+    // enemies_countActive()==0 before a boss encounter can start, so this
+    // always reclaims every enemy slot at once, right before the boss's own
+    // sprites need them.
     enemies_releaseIdleSprites();
-    turrets_releaseIdleSprites();
 
     // Load this kind's body/weak-spot tiles into the shared boss VRAM
     // range and swap its colors onto hardware PAL3 -- see BOSS_TILE_BASE's

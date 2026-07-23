@@ -125,14 +125,15 @@ u16 enemies_countActive(void);
 void enemies_hideAll(void);
 
 // Releases (SPR_releaseSprite) every currently-inactive enemy's sprite
-// handle back to SGDK's pool and nulls it -- see boss.c's boss_begin(),
-// which reclaims these hardware sprite slots for its own sprites instead of
-// growing the game's total ever-allocated count (formation.c already
-// guarantees enemies_countActive()==0 before a boss encounter can start, so
-// this always reclaims every enemy slot). Safe regardless of timing: only
-// touches slots already confirmed inactive. The existing lazy
-// `if (e->sprite == NULL) SPR_addSpriteEx(...)` in enemy_spawn() already
-// handles recreating it next time an enemy spawns.
+// handle back to SGDK's pool and nulls it -- called every frame from main.c
+// (see game.h's sprite-budget comment) so the sprite-object budget tracks
+// how many enemies are actually alive right now rather than the historical
+// high-water mark, plus once more from boss.c's boss_begin() (where
+// formation.c already guarantees enemies_countActive()==0, reclaiming every
+// slot at once right before the boss's own sprites need them). Safe
+// regardless of timing: only touches slots already confirmed inactive. The
+// existing lazy `if (e->sprite == NULL) SPR_addSpriteEx(...)` in
+// enemy_spawn() already handles recreating it next time an enemy spawns.
 void enemies_releaseIdleSprites(void);
 
 // Sends every active enemy into (or keeps it in) ENEMY_STATE_DIVING_OUT from

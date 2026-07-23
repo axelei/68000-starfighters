@@ -20,11 +20,11 @@ bool aabb_overlaps(AABB a, AABB b)
 static void resolvePlayerBulletsVsEnemies(void)
 {
     // Bounds cached once per frame rather than recomputed inside the bullet
-    // loop below: with up to MAX_PLAYER_BULLETS (16) active bullets each
-    // scanning all MAX_ENEMIES (48) slots, enemy_getBounds() (and the
+    // loop below: with up to MAX_PLAYER_BULLETS active bullets each
+    // scanning all MAX_ENEMIES slots, enemy_getBounds() (and the
     // enemy_widthForKind()/heightForKind() switches it calls) was being
-    // re-run up to 768 times a frame for only 48 distinct boxes -- the
-    // slowdown reported with many player bullets on screen at once.
+    // re-run many times a frame for the same handful of distinct boxes --
+    // the slowdown reported with many player bullets on screen at once.
     AABB enemyBoxes[MAX_ENEMIES];
     bool enemyLive[MAX_ENEMIES];
     for (u16 ei = 0; ei < MAX_ENEMIES; ei++)

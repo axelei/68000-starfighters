@@ -9,7 +9,7 @@ generate_placeholders.py uses for art. Re-run after editing waves.txt:
 
 import os
 
-MAX_ENEMIES = 32
+MAX_ENEMIES = 30  # must match src/game.h's MAX_ENEMIES
 MAX_SPECIALS_PER_WAVE = 8
 
 SRC_PATH = os.path.join(os.path.dirname(__file__), "waves.txt")

@@ -24,6 +24,15 @@ extern Bullet enemyBullets[MAX_ENEMY_BULLETS];
 void bullets_init(void);
 void bullets_update(void);
 
+// Releases (SPR_releaseSprite) every currently-inactive bullet's sprite
+// handle back to SGDK's pool and nulls it -- call every frame (see main.c)
+// so the sprite-object budget tracks how many bullets are actually alive
+// right now instead of the historical high-water mark. Safe regardless of
+// timing: only touches slots already confirmed inactive; bullet_spawn_*()'s
+// existing `if (b->sprite == NULL) SPR_addSpriteEx(...)` already handles
+// recreating it next time that slot is reused.
+void bullets_releaseIdleSprites(void);
+
 // Nulls every cached sprite handle in both pools -- call once at boot (see
 // main.c), right after SPR_init() and before the title/game restart loop's
 // bullets_init() calls start reusing them. SPR_init() invalidates any

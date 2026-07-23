@@ -307,6 +307,31 @@ void bullets_update(void)
     update_pool(enemyBullets, MAX_ENEMY_BULLETS);
 }
 
+static void releaseIdle_pool(Bullet *pool, u16 count)
+{
+    for (u16 i = 0; i < count; i++)
+    {
+        Bullet *b = &pool[i];
+        if (b->active || b->sprite == NULL)
+            continue;
+
+        SPR_releaseSprite(b->sprite);
+        b->sprite = NULL;
+    }
+}
+
+// Reclaims hardware sprite slots from every bullet that went inactive since
+// the last call (see game.h's sprite-budget comment) -- called every frame
+// rather than only around boss transitions like enemy.c/turret.c's own
+// releaseIdleSprites(), since bullets churn constantly and holding every
+// spent one's handle forever would burn through SGDK's 80-object ceiling
+// far faster than the pool actually needs at any single instant.
+void bullets_releaseIdleSprites(void)
+{
+    releaseIdle_pool(playerBullets, MAX_PLAYER_BULLETS);
+    releaseIdle_pool(enemyBullets, MAX_ENEMY_BULLETS);
+}
+
 static void hideAll_pool(Bullet *pool, u16 count)
 {
     for (u16 i = 0; i < count; i++)

@@ -189,6 +189,17 @@ int main(bool hardReset)
                 if (!gameOver)
                     collisions_resolve();
 
+                // Reclaim hardware sprite slots from whatever went inactive
+                // this frame (see game.h's sprite-budget comment) -- keeps
+                // the sprite-object budget tracking actual concurrent usage
+                // instead of the historical high-water mark, so these pools'
+                // sizes can be generous without risking SGDK's 80-object
+                // ceiling.
+                bullets_releaseIdleSprites();
+                explosions_releaseIdleSprites();
+                enemies_releaseIdleSprites();
+                turrets_releaseIdleSprites();
+
                 sfx_update();
             }
 

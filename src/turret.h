@@ -4,8 +4,11 @@
 #include "game.h"
 #include "terrain.h"
 
-// At most this many ground turrets can be active on screen at once.
-#define MAX_TURRETS 2
+// At most this many ground turrets can be active on screen at once. See
+// game.h's sprite-budget comment -- sized against actual observed
+// concurrent sprite usage now that idle turret sprites are released every
+// frame, not an arbitrary gameplay-pacing choice.
+#define MAX_TURRETS 4
 
 typedef struct
 {
@@ -44,11 +47,14 @@ void turrets_resetHandles(void);
 void turrets_hideAll(void);
 
 // Releases (SPR_releaseSprite) every currently-inactive turret's sprite
-// handle back to SGDK's pool and nulls it -- see boss.c's boss_begin(),
-// which reclaims these hardware sprite slots for its own sprites instead of
-// growing the game's total ever-allocated count (turrets are never active
-// during a boss encounter). Safe regardless of timing: only touches slots
-// already confirmed inactive. The existing lazy
+// handle back to SGDK's pool and nulls it -- called every frame from main.c
+// (see game.h's sprite-budget comment) so the sprite-object budget tracks
+// how many turrets are actually alive right now rather than the historical
+// high-water mark. A turret still active when a boss encounter begins is
+// deliberately left alone (see boss.c's boss_begin()) -- it keeps fighting
+// into the boss fight and only gives up its slot once it actually dies or
+// scrolls off, same as during ordinary gameplay. Safe regardless of timing:
+// only touches slots already confirmed inactive. The existing lazy
 // `if (t->sprite == NULL) SPR_addSpriteEx(...)` in trySpawn() already
 // handles recreating it next time a turret spawns.
 void turrets_releaseIdleSprites(void);

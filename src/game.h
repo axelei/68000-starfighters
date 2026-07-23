@@ -46,26 +46,48 @@
 
 // Every pool below (plus explosion.h's MAX_EXPLOSIONS, turret.h's
 // MAX_TURRETS, score.c's life icons/GAME OVER letters, player.c's own ship)
-// hands out SGDK Sprite objects that are never SPR_released -- once a pool
-// slot is used, its handle is kept and reused (SPR_setDefinition()) for the
-// rest of the session, never given back (see enemy.h's top comment for the
-// one exception -- turrets/enemies during a boss fight -- and its own
-// account of this exact ceiling getting hit before, with bullets silently
-// failing to render). SGDK hard-caps the WHOLE GAME to 80 *ever-allocated*
-// sprite objects at once (sprite_eng.c's MAX_SPRITE -- a real Genesis
-// hardware limit, not a tunable), and none of these pools' sizes were ever
-// picked with the *sum* across every pool in mind, only each in isolation.
-// Add up generous headroom in several of them at once (as bullets/
-// explosions/enemies all eventually will, given a long enough session) and
-// the total quietly sails past 80 -- from then on, whichever pool tries to
-// allocate a fresh slot next just doesn't get one, and that entity stays
-// logically alive/active but permanently unrendered until it's killed or
-// times out (exactly what made turrets/enemies "invisible" after several
-// waves). These sizes are trimmed to real gameplay needs (see waves.txt via
-// waves_generated.h for MAX_ENEMIES; the rest were simply over-provisioned)
-// so the grand total across every pool stays safely under 80.
-#define MAX_PLAYER_BULLETS 10
-#define MAX_ENEMY_BULLETS  10
+// hands out SGDK Sprite objects, and SGDK hard-caps the WHOLE GAME to 80
+// *simultaneously-allocated* sprite objects (sprite_eng.c's MAX_SPRITE -- a
+// real Genesis hardware limit, not a tunable): once a slot is used, its
+// handle stays valid and is reused (SPR_setDefinition()) the next time that
+// same pool slot is needed, but every pool with high churn (bullets,
+// explosions, enemies, turrets) now releases a slot's handle back to SGDK
+// (SPR_releaseSprite()) the moment it goes idle -- see each pool's own
+// *_releaseIdleSprites(), called every frame from main.c -- instead of
+// holding it forever. That's what makes generous pool sizes affordable at
+// all: the budget that matters is how many of these are ever actually alive
+// at the same instant, not the sum of every pool's array size. Without this
+// (the previous design), the total *ever-allocated* count only ever grew
+// for the whole session, and quietly sailed past 80 the first time several
+// pools' generous headroom happened to fill up at once -- from then on,
+// whichever pool tried to allocate a fresh slot next just didn't get one,
+// and that entity stayed logically alive/active but permanently unrendered
+// until it was killed or timed out (exactly what made turrets/enemies
+// "invisible" after several waves).
+//
+// The always-on, non-adjustable floor: player ship (1) + score.c's life
+// icons (LIFE_ICON_MAX, 4) + GAME OVER letters (GAMEOVER_LETTER_COUNT, 8) =
+// 13, allocated once at score_init() and held for the whole session
+// regardless of what's happening in gameplay. MAX_ENEMIES is sized to real
+// wave data, not guesswork (see its own comment below) -- growing it past
+// that buys nothing since no wave ever asks for more; it isn't the
+// bottleneck on how many enemies appear at once (waves.txt is). Everything
+// else below is sized generously against actual observed concurrent usage
+// (via emulator sprite-table inspection) rather than the old worst-case
+// sum -- boss.c's own body/weak-spot sprites are separate again: enemies
+// are released via enemies_releaseIdleSprites() right before a boss fight
+// (formation.c guarantees none are active by then) and boss.c releases its
+// own on endFight(); turrets are the one pool deliberately left alone at
+// that transition (see boss_begin()) so one still mid-fight keeps fighting
+// into the encounter instead of being yanked off screen.
+// POWERUP_SPREAD fires 3 bullets per shot (see player.c's handleFire()),
+// each alive for ~PLAY_AREA height / BULLET_SPEED frames (~52 @ NTSC's
+// 4.0px/frame from the bottom of the play area) while refiring every
+// FIRE_COOLDOWN (8 NTSC/7 PAL) frames -- held down continuously that's
+// ~(52/8)*3 =~ 20 concurrent player bullets in the worst case, so this
+// needs real headroom above a plain single-shot estimate.
+#define MAX_PLAYER_BULLETS 24
+#define MAX_ENEMY_BULLETS  20
 // Covers the biggest wave (see waves_generated.h -- wave 10's 4 BIG + 4x6
 // grid = 28) with a couple of spare slots, not the inter-wave waver batch
 // (WAVER_SUBGROUP_SIZE/SIDE_DIVE_SUBGROUP_SIZE in enemy.h, both well under

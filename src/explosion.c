@@ -135,6 +135,21 @@ void explosions_update(void)
     }
 }
 
+// See bullet.c's bullets_releaseIdleSprites() -- same reasoning, called
+// every frame from main.c.
+void explosions_releaseIdleSprites(void)
+{
+    for (u16 i = 0; i < MAX_EXPLOSIONS; i++)
+    {
+        Explosion *e = &explosions[i];
+        if (e->active || e->sprite == NULL)
+            continue;
+
+        SPR_releaseSprite(e->sprite);
+        e->sprite = NULL;
+    }
+}
+
 void explosions_hideAll(void)
 {
     for (u16 i = 0; i < MAX_EXPLOSIONS; i++)

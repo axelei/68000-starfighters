@@ -13,7 +13,7 @@
 #                        powerup-dropping SPECIAL enemy instead of a plain
 #                        BEE; repeatable, any number per wave
 #
-# (rows*cols + big) must not exceed MAX_ENEMIES (32, see game.h). Waves are
+# (rows*cols + big) must not exceed MAX_ENEMIES (30, see game.h). Waves are
 # played in order and then loop back to wave 1, increasing the "waves
 # cleared" counter forever.
 
